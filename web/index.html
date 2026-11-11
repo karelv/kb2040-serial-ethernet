@@ -56,7 +56,8 @@ input[type=range]{flex:1;min-width:140px;accent-color:var(--accent)}
 .disc{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:12px 14px;display:flex;flex-direction:column;gap:10px}
 .disc-head{display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center}
 a.btn{display:inline-block;font-size:13px;color:var(--text);background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:7px 12px;text-decoration:none}
-a.btn:hover{border-color:var(--accent2)} a.btn.primary{background:#1f6f5f;border-color:#2b8f7b}
+a.btn:hover{border-color:var(--accent2)}
+#oLatest a,.note a,#ethLinks a:not(.btn){color:var(--accent2)} a.btn.primary{background:#1f6f5f;border-color:#2b8f7b}
 .scan{display:flex;flex-wrap:wrap;gap:6px}
 .scan span{font:11px var(--mono);padding:2px 7px;border-radius:6px;border:1px solid var(--line);color:var(--muted)}
 .scan span.up{color:var(--ok);border-color:rgba(63,185,80,.5)}
@@ -603,7 +604,7 @@ details.panel[open]>summary::before{content:'▾'}
         sel.dataset.slot = String(m.slot) + '|' + online().length;
       }
     }
-    $('noBoards').classList.toggle('hidden', any);
+    $('noBoards').classList.toggle('hidden', any || NO_HTTP);
     $('scan').innerHTML = boards.map(b => `<span class="${b.online ? 'up' : ''}" title="${b.host}">${b.ip}</span>`).join('');
     $('scanInfo').textContent = `${online().length} online · empty addresses re-probed every 3–30 s`;
   }
@@ -1172,6 +1173,8 @@ details.panel[open]>summary::before{content:'▾'}
     $('oTransport').querySelector('option[value="http"]').remove();
     $('oTransport').value = 'serial';
     $('uart').open = true;
+    $('uart').classList.remove('full');               // serial | firmware side by side
+    $('ota').parentNode.insertBefore($('uart'), $('ota'));
     const el = $('ethLinks');
     el.innerHTML = '<div class="muted" style="font-size:12px;margin-bottom:8px">This hosted console talks to boards over <b>USB serial</b> (panel below). ' +
       'The USB Ethernet features (live dashboard, board cards, slots, clone, HTTP updates) run on the board\'s own page:</div>' +
