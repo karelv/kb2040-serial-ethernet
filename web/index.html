@@ -991,8 +991,12 @@ details.panel[open]>summary::before{content:'▾'}
   const POLYFILL_URLS = [new URL('vendor/web-serial-polyfill.js', document.baseURI).href,
     'https://cdn.jsdelivr.net/npm/web-serial-polyfill@1.0.15/dist/serial.js'];
   let polyfillPromise = null;
+  // WebUSB: KB2040 (Adafruit) / RP2040 (Raspberry Pi) boards that have a CDC-ACM interface
+  // (class 2 = CDC, subclass 2 = ACM). The CDC-NCM Ethernet function is subclass 13.
+  const USB_ACM_FILTERS = [0x239a, 0x2e8a].map(vendorId => ({ vendorId, classCode: 2, subclassCode: 2 }));
+  const isUsbAcm = (d) => [0x239a, 0x2e8a].includes(d.vendorId) && (d.configurations[0] || { interfaces: [] }).interfaces
+    .some(i => i.alternates[0] && i.alternates[0].interfaceClass === 2 && i.alternates[0].interfaceSubclass === 2);
   const loadPolyfill = () => (polyfillPromise ||= import(POLYFILL_URLS[0]).catch(() => import(POLYFILL_URLS[1]))
-    .then(m => m.serial)
     .catch(e => { polyfillPromise = null; throw new Error('could not load web-serial-polyfill (' + e.message + ')'); }));
 
   function uiUart(connected) {
@@ -1038,8 +1042,17 @@ details.panel[open]>summary::before{content:'▾'}
   async function uartConnect(kind) {
     try {
       const filters = [{ usbVendorId: 0x239a }, { usbVendorId: 0x2e8a }];
-      const api = kind === 'usb' ? await loadPolyfill() : navigator.serial;
-      const port = await api.requestPort({ filters });
+      let port;
+      if (kind === 'usb') {
+        // Ask WebUSB for boards with a CDC-ACM (serial) interface only. The polyfill's own
+        // requestPort() matches any CDC interface, so the board's CDC-NCM (Ethernet) function and
+        // other CDC devices would show up in the chooser too.
+        const poly = await loadPolyfill();
+        const device = await navigator.usb.requestDevice({ filters: USB_ACM_FILTERS });
+        port = new poly.SerialPort(device);
+      } else {
+        port = await navigator.serial.requestPort({ filters });
+      }
       await openPort(port, kind, 'port opened');
     } catch (e) {
       if (e.name !== 'NotFoundError') logLine(uLog, 'err', 'connect failed: ' + e.message);
@@ -1073,8 +1086,14 @@ details.panel[open]>summary::before{content:'▾'}
       if (!r || r.kind !== kind || U.port || now() > r.until) return;
       await new Promise(res => setTimeout(res, 400));
       let ports = [];
-      try { ports = kind === 'usb' ? await (await loadPolyfill()).getPorts() : await navigator.serial.getPorts(); } catch {}
-      ports = ports.filter(p => [0x239a, 0x2e8a].includes(p.getInfo().usbVendorId));
+      try {
+        if (kind === 'usb') {
+          const poly = await loadPolyfill();
+          ports = (await navigator.usb.getDevices()).filter(isUsbAcm).map(d => new poly.SerialPort(d));
+        } else {
+          ports = (await navigator.serial.getPorts()).filter(p => [0x239a, 0x2e8a].includes(p.getInfo().usbVendorId));
+        }
+      } catch {}
       for (const p of ports) {
         if (U.port || !U.rearm) return;
         try { await openPort(p, kind, 'port reopened'); return; } catch {}
@@ -1190,7 +1209,7 @@ details.panel[open]>summary::before{content:'▾'}
     if (isAndroid) {
       // WebUSB first on Android; the serial panel is the main control path there.
       $('uConnectUsb').classList.add('primary');
-      $('uConnect').classList.remove('primary');
+      $('uConnect').classList.add('hidden');  // Android's Web Serial lists only Bluetooth ports
       $('uart').open = true;
       $('oTransport').value = 'serial';
       loadPolyfill().catch(() => {});  // preload so requestDevice() runs inside the click's user activation
