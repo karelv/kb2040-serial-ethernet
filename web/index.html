@@ -1,0 +1,1141 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>KB2040 Multi-Board Console</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect x='3' y='6' width='26' height='20' rx='4' fill='%231c2330' stroke='%233fb9a0' stroke-width='2'/%3E%3Ccircle cx='10' cy='16' r='4' fill='%2300ff80'/%3E%3Cpath d='M17 12h8M17 16h8M17 20h5' stroke='%2358a6ff' stroke-width='2' stroke-linecap='round'/%3E%3C/svg%3E">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<meta name="theme-color" content="#0d1117">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="KB2040">
+<style>
+:root{
+  --bg:#0d1117;--panel:#161b22;--panel2:#1c2330;--line:#2a3340;--text:#e6edf3;--muted:#8b98a9;
+  --accent:#3fb9a0;--accent2:#58a6ff;--ok:#3fb950;--warn:#d29922;--bad:#f85149;--led:#00ff80;
+  --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--text);font:14px/1.45 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
+header{padding:16px 20px 4px;display:flex;flex-wrap:wrap;align-items:center;gap:6px 14px}
+header h1{font-size:18px;margin:0;font-weight:600}
+header .sub{color:var(--muted);font-size:13px}
+.wrap{padding:8px 20px 20px;display:flex;flex-direction:column;gap:14px}
+main{display:grid;grid-template-columns:repeat(auto-fit,minmax(360px,1fr));gap:16px}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px;display:flex;flex-direction:column;gap:14px;min-width:0}
+.panel h2{margin:0;font-size:15px;font-weight:600;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.tag{font:600 11px var(--mono);padding:2px 7px;border-radius:999px;background:var(--panel2);color:var(--muted);border:1px solid var(--line)}
+.row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.badge{font-size:12px;font-weight:600;padding:3px 9px;border-radius:999px;border:1px solid currentColor;white-space:nowrap}
+.badge.on{color:var(--ok)} .badge.off{color:var(--muted)} .badge.err{color:var(--bad)} .badge.wait{color:var(--warn)} .badge.info{color:var(--accent2)}
+button,select{font:inherit;font-size:13px;color:var(--text);background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:7px 12px;cursor:pointer}
+select{padding:6px 8px}
+button:hover:not(:disabled){border-color:var(--accent2)}
+button:disabled,select:disabled{opacity:.45;cursor:not-allowed}
+button.primary{background:#1f6f5f;border-color:#2b8f7b}
+button.danger{border-color:#6e2b2b;color:#ffb4ae}
+button.small{padding:4px 9px;font-size:12px}
+button.sel{border-color:var(--accent);color:var(--accent)}
+input[type=text],input[type=url]{font:13px var(--mono);color:var(--text);background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:7px 10px;flex:1;min-width:0}
+input[type=range]{flex:1;min-width:140px;accent-color:var(--accent)}
+.label{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}
+.mono{font-family:var(--mono)}
+.muted{color:var(--muted)} .ok{color:var(--ok)} .bad{color:var(--bad)} .warn{color:var(--warn)}
+.hidden{display:none!important}
+
+/* banners */
+.banner{border-radius:12px;padding:12px 16px;display:flex;flex-wrap:wrap;gap:10px 16px;align-items:center}
+.banner b{font-size:15px}
+.banner.red{background:rgba(248,81,73,.12);border:2px solid var(--bad)}
+.banner.amber{background:rgba(210,153,34,.10);border:1px solid rgba(210,153,34,.6)}
+.banner .grow{flex:1;min-width:260px}
+
+/* discovery bar */
+.disc{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:12px 14px;display:flex;flex-direction:column;gap:10px}
+.disc-head{display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center}
+.scan{display:flex;flex-wrap:wrap;gap:6px}
+.scan span{font:11px var(--mono);padding:2px 7px;border-radius:6px;border:1px solid var(--line);color:var(--muted)}
+.scan span.up{color:var(--ok);border-color:rgba(63,185,80,.5)}
+.cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(270px,1fr));gap:10px}
+.card{background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:10px 12px;display:flex;flex-direction:column;gap:7px;cursor:pointer}
+.card.active{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent) inset}
+.card .top{display:flex;align-items:center;gap:8px;justify-content:space-between}
+.card .ip{font:600 14px var(--mono)}
+.card .meta{font:12px var(--mono);color:var(--muted);display:flex;flex-wrap:wrap;gap:2px 12px}
+.card .meta a{color:var(--accent2);text-decoration:none}
+.slotb{font:600 11px var(--mono);padding:2px 8px;border-radius:999px;background:#2a2340;color:#c9b6ff;border:1px solid #4b3d7a}
+.slotb.def{background:#2f2a1a;color:#f0c674;border-color:#6b5a2a}
+.dot{width:9px;height:9px;border-radius:50%;display:inline-block;background:#3a4350;flex:none}
+.dot.open{background:var(--ok);box-shadow:0 0 6px var(--ok)} .dot.connecting{background:var(--warn)} .dot.closed{background:var(--bad)}
+.empty{color:var(--muted);font-size:13px;padding:6px 2px}
+
+/* dashboard */
+.stats{display:grid;grid-template-columns:1fr auto;gap:12px;align-items:center;background:var(--panel2);border-radius:10px;padding:12px 14px}
+.counter{font:600 44px/1 var(--mono);letter-spacing:-1px}
+.led{width:34px;height:34px;border-radius:50%;background:#20262f;border:2px solid #333c48;transition:all .12s}
+.led.lit{background:var(--led);border-color:#7dffc0;box-shadow:0 0 18px 4px rgba(0,255,128,.45)}
+.led.unknown{background:repeating-linear-gradient(45deg,#20262f 0 4px,#2a313b 4px 8px)}
+.ledwrap{display:flex;flex-direction:column;align-items:center;gap:4px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:8px}
+.cell{background:var(--panel2);border-radius:10px;padding:8px 10px;min-width:0}
+.cell .v{font:600 15px var(--mono);margin-top:2px;overflow-wrap:anywhere}
+.hb{width:10px;height:10px;border-radius:50%;background:#333c48;display:inline-block}
+.hb.beat{animation:beat .4s ease-out}
+@keyframes beat{0%{background:var(--accent);box-shadow:0 0 0 0 rgba(63,185,160,.7)}100%{background:#333c48;box-shadow:0 0 0 8px rgba(63,185,160,0)}}
+.log{font:12px/1.5 var(--mono);background:#0a0e14;border:1px solid var(--line);border-radius:8px;height:160px;overflow:auto;padding:8px 10px;white-space:pre-wrap;word-break:break-all}
+.log .rx{color:#a5d6ff} .log .tx{color:#ffa657} .log .sys{color:var(--muted)} .log .err{color:var(--bad)} .log .okl{color:var(--ok)}
+.note{font-size:12px;color:var(--warn);background:rgba(210,153,34,.08);border:1px solid rgba(210,153,34,.35);border-radius:8px;padding:8px 10px}
+.note code{font-family:var(--mono)}
+.version{font:600 12px var(--mono);padding:3px 9px;border-radius:999px;background:#13233a;color:#9ccbff;border:1px solid #2b4a75}
+
+/* OTA */
+.tabs{display:flex;gap:6px;flex-wrap:wrap}
+.tabs button{flex:1;min-width:110px}
+.tabs button.sel{background:#183a33}
+.drop{border:2px dashed var(--line);border-radius:10px;padding:18px;text-align:center;color:var(--muted);cursor:pointer}
+.drop.over{border-color:var(--accent);color:var(--text);background:rgba(63,185,160,.06)}
+.bar{height:14px;background:#0a0e14;border:1px solid var(--line);border-radius:999px;overflow:hidden}
+.bar>div{height:100%;width:0;background:linear-gradient(90deg,#1f6feb,#58a6ff);transition:width .15s}
+.bar.okb>div{background:linear-gradient(90deg,#238636,#3fb950)} .bar.errb>div{background:var(--bad)}
+.ota-stats{display:flex;flex-wrap:wrap;gap:6px 18px;font:12px var(--mono);color:var(--muted)}
+.ota-stats b{color:var(--text)}
+details.panel>summary{cursor:pointer;font-size:15px;font-weight:600;list-style:none;display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+details.panel>summary::before{content:'▸';color:var(--muted)}
+details.panel[open]>summary::before{content:'▾'}
+.full{grid-column:1/-1}
+.card.identify{animation:idf 1.25s steps(10,end)}
+@keyframes idf{0%,20%,40%,60%,80%{box-shadow:0 0 0 3px #fff inset}10%,30%,50%,70%,90%,100%{box-shadow:none}}
+.toast{position:fixed;right:16px;bottom:16px;max-width:min(480px,calc(100vw - 32px));background:#3a1618;color:#ffd7d4;border:1px solid var(--bad);border-radius:10px;padding:10px 14px;font-size:13px;z-index:10;box-shadow:0 6px 24px rgba(0,0,0,.4)}
+</style>
+</head>
+<body>
+<header>
+  <h1>KB2040 · Multi-Board Console</h1>
+  <span class="sub">USB-Ethernet WebSockets · slots &amp; mDNS · 3-mode firmware streaming · Web Serial</span>
+  <span id="hdrVersion" class="version hidden" title="Firmware build of the active board"></span>
+  <button id="installBtn" class="small hidden" title="Install this console as an app that also works offline">Install app</button>
+</header>
+
+<div class="wrap">
+  <!-- ============ collision banner (browser-side route takeover detection) ============ -->
+  <div id="collision" class="banner red hidden" role="alert">
+    <div class="grow">
+      <b>⚠ IP Collision Detected on <span id="colIp" class="mono">192.168.7.1</span></b><br>
+      <span id="colText" class="muted"></span>
+    </div>
+    <div class="row">
+      <span class="label">Assign current board to</span>
+      <select id="colSlot"></select>
+      <button id="colAssign" class="primary">Assign &amp; reboot</button>
+      <button id="colDismiss" class="small">Dismiss</button>
+    </div>
+  </div>
+
+  <!-- ============ default board prompt ============ -->
+  <div id="defPrompt" class="banner amber hidden">
+    <div class="grow" id="defText"></div>
+    <div class="row">
+      <button id="defIdentify" class="small">Identify</button>
+      <button id="defAssign" class="primary"></button>
+    </div>
+  </div>
+
+  <!-- ============ discovery bar ============ -->
+  <section class="disc">
+    <div class="disc-head">
+      <span class="label">Boards</span>
+      <span class="scan" id="scan"></span>
+      <span class="muted" style="font-size:12px;margin-left:auto" id="scanInfo">scanning…</span>
+      <button id="rescan" class="small">Rescan</button>
+    </div>
+    <div class="cards" id="cards"></div>
+    <div class="empty" id="noBoards">No board found yet. Plug in a KB2040, wait for the host to get its DHCP lease (<span class="mono">192.168.7.2</span> / <span class="mono">192.168.7N.2</span>), or hold BOOT for 3 s on a board with a forgotten slot.</div>
+    <div class="note hidden" id="discNote"></div>
+  </section>
+
+  <main>
+    <!-- ============ live dashboard ============ -->
+    <section class="panel" id="dash">
+      <h2>Live dashboard <span class="tag">WebSocket push</span>
+        <span id="dBadge" class="badge off">No board</span> <span class="hb" id="dHb" title="message heartbeat"></span>
+      </h2>
+      <div class="stats">
+        <div><div class="label">Counter <span id="dHost" class="mono" style="text-transform:none"></span></div><div class="counter" id="dCounter">—</div></div>
+        <div class="ledwrap"><div class="led unknown" id="dLed"></div><div class="label">NeoPixel</div></div>
+      </div>
+      <div class="row">
+        <button data-led="on" disabled>LED ON</button>
+        <button data-led="off" disabled>LED OFF</button>
+        <button data-led="toggle" disabled>Toggle LED</button>
+        <button id="dIdentify" disabled title="Flash this board's NeoPixel white/cyan 5×">Identify (blink)</button>
+      </div>
+      <div>
+        <div class="row" style="justify-content:space-between"><span class="label">Push interval</span><span class="mono"><b id="dIntVal">—</b> <span class="muted" id="dIntHz"></span></span></div>
+        <div class="row" style="margin-top:6px">
+          <input type="range" id="dInt" min="0" max="1000" step="1" value="565" disabled aria-label="Push interval">
+        </div>
+        <div class="row" style="margin-top:6px" id="presets">
+          <button class="small" data-ms="100" disabled>100 ms</button>
+          <button class="small" data-ms="250" disabled>250 ms</button>
+          <button class="small" data-ms="500" disabled>500 ms</button>
+          <button class="small" data-ms="1000" disabled>1000 ms</button>
+          <button class="small" data-ms="2000" disabled>2000 ms</button>
+        </div>
+      </div>
+      <div class="grid">
+        <div class="cell"><div class="label">Measured rate</div><div class="v" id="dRate">—</div></div>
+        <div class="cell"><div class="label">Jitter (σ)</div><div class="v" id="dJitter">—</div></div>
+        <div class="cell"><div class="label">Missed frames</div><div class="v" id="dMissed">—</div></div>
+        <div class="cell"><div class="label">Slot</div><div class="v" id="dSlot">—</div></div>
+        <div class="cell"><div class="label">IP</div><div class="v" id="dIp">—</div></div>
+        <div class="cell"><div class="label">Chip ID</div><div class="v" id="dChip">—</div></div>
+        <div class="cell"><div class="label">MAC</div><div class="v" id="dMac">—</div></div>
+        <div class="cell"><div class="label">Uptime</div><div class="v" id="dUp">—</div></div>
+        <div class="cell"><div class="label">WS clients</div><div class="v" id="dWs">—</div></div>
+      </div>
+      <div>
+        <div class="row" style="justify-content:space-between"><span class="label">Event log</span><button id="dClear" class="small">Clear</button></div>
+        <div class="log" id="dLog"></div>
+      </div>
+    </section>
+
+    <!-- ============ firmware update ============ -->
+    <section class="panel" id="ota">
+      <h2>Firmware update <span class="tag">OTA · LittleFS + PicoOTA</span> <span id="oBadge" class="badge off">Idle</span></h2>
+      <div class="row">
+        <span class="label">Transport</span>
+        <select id="oTransport">
+          <option value="http">USB Ethernet · POST /api/update</option>
+          <option value="serial">Web Serial · OTA:START</option>
+        </select>
+        <span class="muted" style="font-size:12px">Target: <b id="oTarget" class="mono">—</b></span>
+      </div>
+      <div class="tabs" role="tablist">
+        <button data-tab="url" class="sel">① Stream from URL</button>
+        <button data-tab="clone">② Clone board→board</button>
+        <button data-tab="file">③ Local .bin file</button>
+      </div>
+
+      <div data-pane="url">
+        <div class="row">
+          <input type="url" id="oUrl" spellcheck="false" aria-label="Firmware URL">
+          <button id="oUrlGo" class="primary">Stream &amp; Flash directly from URL</button>
+        </div>
+        <div class="muted" style="font-size:12px;margin-top:6px">The browser fetches the <code>.bin</code> into RAM and streams it to the board. Nothing is saved to disk. Serve the build with <code class="mono">python3 serve.py</code> (adds CORS headers).</div>
+      </div>
+
+      <div data-pane="clone" class="hidden">
+        <div class="row">
+          <span class="label">From</span><select id="oSrc"></select>
+          <span class="label">to</span><select id="oDst"></select>
+        </div>
+        <div class="row" style="margin-top:8px">
+          <button id="oCloneGo" class="primary">Clone Firmware from Active Board to Target Board</button>
+        </div>
+        <div class="muted" style="font-size:12px;margin-top:6px" id="oCloneHint">Reads the running image from the source board's XIP flash (<code>GET /api/firmware.bin</code>) and streams it into the target. Needs 2+ boards.</div>
+      </div>
+
+      <div data-pane="file" class="hidden">
+        <label class="drop" id="oDrop">
+          <input type="file" id="oFile" accept=".bin,application/octet-stream" class="hidden">
+          Drop a <b>firmware .bin</b> here, or click to choose a file.
+        </label>
+      </div>
+
+      <div>
+        <div class="bar" id="oBar"><div></div></div>
+        <div class="ota-stats" style="margin-top:6px">
+          <span>Progress <b id="oPct">0%</b></span>
+          <span><b id="oBytes">0 / 0</b> KB</span>
+          <span>Rate <b id="oRate">—</b></span>
+          <span>Elapsed <b id="oTime">—</b></span>
+          <span id="oPhase"></span>
+        </div>
+      </div>
+      <div>
+        <div class="row" style="justify-content:space-between"><span class="label">Update log</span><button id="oClear" class="small">Clear</button></div>
+        <div class="log" id="oLog"></div>
+      </div>
+    </section>
+
+    <!-- ============ Web Serial (collapsible) ============ -->
+    <details class="panel full" id="uart">
+      <summary>USB UART <span class="tag">CDC-ACM · Web Serial</span> <span id="uBadge" class="badge off">Disconnected</span> <span id="uChip" class="muted mono" style="font-size:12px"></span></summary>
+      <div id="uNote" class="note hidden"></div>
+      <div class="row">
+        <button id="uConnect" class="primary">Connect Web Serial</button>
+        <button id="uConnectUsb" class="hidden" title="Serial over WebUSB (web-serial-polyfill), for Android where Web Serial lists no USB ports">Connect via WebUSB</button>
+        <button id="uDisconnect" disabled>Disconnect</button>
+        <span class="muted">Counter <b id="uCounter" class="mono">—</b></span>
+        <div class="led unknown" id="uLed" style="width:18px;height:18px"></div>
+      </div>
+      <div class="row">
+        <button data-u="LED:ON" disabled>LED ON</button>
+        <button data-u="LED:OFF" disabled>LED OFF</button>
+        <button data-u="LED:TOGGLE" disabled>Toggle LED</button>
+        <button data-u="IDENTIFY" disabled>Identify</button>
+        <button data-u="STATE" disabled>STATE</button>
+        <button id="uBoot" class="danger" disabled title="Reboot into the UF2 bootloader (RPI-RP2 drive)">Reboot to Bootloader</button>
+      </div>
+      <div class="row">
+        <input type="text" id="uCmd" spellcheck="false" placeholder='LED:TOGGLE · INTERVAL:250 · SLOT:2 · {"cmd":"identify"}' disabled aria-label="Serial command">
+        <button id="uSend" disabled>Send</button>
+        <label class="muted" style="font-size:12px"><input type="checkbox" id="uShowTel"> show telemetry lines</label>
+      </div>
+      <div>
+        <div class="row" style="justify-content:space-between"><span class="label">UART console</span><button id="uClear" class="small">Clear</button></div>
+        <div class="log" id="uLog"></div>
+      </div>
+    </details>
+  </main>
+</div>
+
+<script>
+(() => {
+  'use strict';
+  const $ = (id) => document.getElementById(id);
+  const now = () => performance.now();
+  const ts = () => new Date().toLocaleTimeString([], {hour12:false}) + '.' + String(Date.now()%1000).padStart(3,'0');
+  const store = {
+    get(k, d) { try { const v = localStorage.getItem('kb2040.' + k); return v === null ? d : v; } catch { return d; } },
+    set(k, v) { try { localStorage.setItem('kb2040.' + k, v); } catch {} },
+  };
+  function logLine(el, cls, text) {
+    const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 30;
+    const d = document.createElement('div');
+    d.className = cls;
+    d.textContent = `${ts()} ${cls === 'rx' ? '◀' : cls === 'tx' ? '▶' : '•'} ${text}`;
+    el.appendChild(d);
+    while (el.childNodes.length > 400) el.removeChild(el.firstChild);
+    if (atBottom) el.scrollTop = el.scrollHeight;
+  }
+  const dlog = (cls, t) => logLine($('dLog'), cls, t);
+  const olog = (cls, t) => logLine($('oLog'), cls, t);
+  const fmtMs = (ms) => ms >= 1000 ? (ms / 1000).toFixed(ms % 1000 ? 2 : 0) + ' s' : ms + ' ms';
+  const fmtUp = (ms) => { const s = Math.floor(ms / 1000); return `${Math.floor(s/3600)}h ${String(Math.floor(s/60)%60).padStart(2,'0')}m ${String(s%60).padStart(2,'0')}s`; };
+  const slotName = (s) => s ? 'Slot ' + s : 'Default';
+
+  // ---------------- CRC32 (IEEE) ----------------
+  const CRC_T = (() => { const t = new Uint32Array(256); for (let n = 0; n < 256; n++) { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1; t[n] = c >>> 0; } return t; })();
+  function crc32(u8) { let c = 0xFFFFFFFF; for (let i = 0; i < u8.length; i++) c = CRC_T[(c ^ u8[i]) & 0xFF] ^ (c >>> 8); return ((c ^ 0xFFFFFFFF) >>> 0); }
+  const hex8 = (n) => n.toString(16).toUpperCase().padStart(8, '0');
+
+  // =====================================================================
+  // Board registry & discovery
+  // =====================================================================
+  const CANDIDATES = [0, 1, 2, 3, 4].map(s => ({
+    slot: s, ip: s ? `192.168.${70 + s}.1` : '192.168.7.1', host: s ? `kb2040-${s}.local` : 'kb2040.local',
+  }));
+  const boards = CANDIDATES.map(c => ({
+    ...c, base: `http://${c.ip}`, online: false, ws: null, wsState: 'idle', tel: null, lastMsg: 0,
+    probing: false, expectRebootUntil: 0, times: [], missed: 0, card: null,
+  }));
+  const byIp = (ip) => boards.find(b => b.ip === ip);
+  const online = () => boards.filter(b => b.online && b.tel);
+  const ipChip = new Map();          // ip -> last chipId seen there (collision detection)
+  let activeIp = null;
+  let redirectTo = null;             // page served by a board that is moving to a new IP
+  let collisionDismissed = '';
+
+  const pageBoard = boards.find(b => b.ip === location.hostname || b.host === location.hostname);
+  if (pageBoard) activeIp = pageBoard.ip; else activeIp = store.get('active', null);
+
+  async function fetchT(url, ms, opts = {}) {
+    const ac = new AbortController();
+    const t = setTimeout(() => ac.abort(), ms);
+    try { return await fetch(url, { ...opts, cache: 'no-store', signal: ac.signal }); }
+    finally { clearTimeout(t); }
+  }
+
+  async function probe(b) {
+    if (b.probing || b.ws) return;
+    b.probing = true;
+    try {
+      const r = await fetchT(b.base + '/api/state', 1500);
+      const m = await r.json();
+      if (m && m.chipId) { onTelemetry(b, m, true); openWs(b); }
+      b.fails = 0;
+    } catch { if (!b.ws) b.online = false; b.fails = (b.fails || 0) + 1; }
+    finally { b.probing = false; schedule(); }
+  }
+
+  function scanAll() { boards.forEach(b => { if (!b.ws) probe(b); }); }
+
+  function openWs(b) {
+    if (b.ws) return;
+    let ws;
+    try { ws = new WebSocket(`ws://${b.ip}/ws`); } catch { return; }
+    b.ws = ws; b.wsState = 'connecting'; b.wsClosing = false;
+    ws.onopen = () => { if (b.ws === ws) { b.wsState = 'open'; dlog('sys', `${b.ip}: WebSocket open`); schedule(); } };
+    ws.onmessage = (ev) => { let m; try { m = JSON.parse(ev.data); } catch { return; } onMessage(b, m); };
+    ws.onclose = () => {
+      if (b.ws !== ws) return;
+      b.ws = null; b.wsState = 'closed'; b.online = false; b.times = [];
+      dlog('sys', `${b.ip}: WebSocket closed${now() < b.expectRebootUntil ? ' (expected reboot)' : ''}`);
+      schedule();
+      setTimeout(() => probe(b), 600);
+    };
+  }
+
+  // stale WebSocket watchdog (e.g. USB unplugged without FIN)
+  setInterval(() => {
+    for (const b of boards) {
+      if (b.ws && b.wsState === 'open' && b.tel && !OTA.busy && !b.wsClosing) {
+        const limit = Math.max(5000, 3 * (b.tel.intervalMs || 1000) + 2000);
+        if (now() - b.lastMsg > limit) { b.wsClosing = true; dlog('err', `${b.ip}: no data for ${Math.round(limit/1000)} s, reconnecting`); try { b.ws.close(); } catch {} }
+      }
+    }
+  }, 1000);
+
+  // Offline addresses are re-probed with exponential backoff: Chrome logs every refused connection
+  // in the console and JS cannot suppress that, so probe empty addresses rarely. The Default
+  // address (where new boards appear) is capped at 10 s, slot addresses at 30 s. Addresses
+  // where a reboot / slot move is expected are probed every second.
+  const probeDelay = (b) => Math.min(b.slot === 0 ? 10000 : 30000, 3000 * 2 ** Math.min(b.fails || 0, 4));
+  setInterval(() => {
+    const t = now();
+    for (const b of boards) {
+      if (b.ws || b.probing) continue;
+      if (t < b.expectRebootUntil || t >= (b.nextProbe || 0)) { b.nextProbe = t + probeDelay(b); probe(b); }
+    }
+  }, 1000);
+  $('rescan').onclick = () => { boards.forEach(b => { b.fails = 0; b.nextProbe = 0; }); scanAll(); };
+
+  // ---------------- messages ----------------
+  function onMessage(b, m) {
+    b.lastMsg = now();  // any frame (telemetry pauses while the board writes an OTA image)
+    switch (m.type) {
+      case 'telemetry': onTelemetry(b, m, false); break;
+      case 'reboot': onReboot(b, m); break;
+      case 'ota': onDeviceOta(b, m); break;
+      case 'error': dlog('err', `${b.ip}: ${m.cmd || ''} ${m.error}`); toast(`${b.ip}: ${m.cmd || 'command'} failed: ${m.error}`); break;
+      case 'ack':
+        dlog('rx', `${b.ip}: ${m.cmd} ok`);
+        if (m.cmd === 'identify' && b.card) { b.card.classList.remove('identify'); void b.card.offsetWidth; b.card.classList.add('identify'); }
+        break;
+    }
+  }
+
+  function onTelemetry(b, m, viaProbe) {
+    const t = now();
+    // Route takeover: a different chip answers on an IP without an announced reboot.
+    const known = ipChip.get(b.ip);
+    if (known && known !== m.chipId && t > b.expectRebootUntil) showCollision(b, known, m.chipId);
+    ipChip.set(b.ip, m.chipId);
+
+    const prev = b.tel;
+    if (!viaProbe && prev && prev.chipId === m.chipId && m.counter !== prev.counter) {
+      if (m.counter > prev.counter + 1 && m.uptimeMs > prev.uptimeMs) b.missed += m.counter - prev.counter - 1;
+      b.times.push(t);
+      while (b.times.length > 2 && t - b.times[0] > 5000) b.times.shift();
+    }
+    if (prev && prev.chipId !== m.chipId) { b.missed = 0; b.times = []; }
+    b.tel = m; b.lastMsg = t; b.online = true;
+    if (t > b.expectRebootUntil) b.expectRebootUntil = 0;
+
+    // A board that announced a slot move came back on its new address.
+    if (redirectTo && redirectTo.chipId === m.chipId && redirectTo.ip === b.ip) {
+      dlog('okl', `${m.hostname} is up at ${b.ip}, opening it`);
+      location.href = b.base + '/';
+      redirectTo = null;
+    }
+    if (moving.has(m.chipId) && moving.get(m.chipId).to === b.ip) {
+      const mv = moving.get(m.chipId); moving.delete(m.chipId);
+      if (activeIp === mv.from) setActive(b.ip);
+      dlog('okl', `chip ${m.chipId} now at ${b.ip} (${m.hostname})`);
+    }
+    const ab = activeIp && byIp(activeIp);
+    if (!ab || (!ab.online && !moving.size && !OTA.busy)) setActive(b.ip);
+    otaOnTelemetry(b, m);
+    if (b.ip === activeIp) beat();
+    schedule();
+  }
+
+  const moving = new Map();  // chipId -> {from, to}
+  function onReboot(b, m) {
+    b.expectRebootUntil = now() + 30000;
+    dlog('sys', `${b.ip}: reboot (${m.reason})${m.reason !== 'reboot' && m.reason !== 'ota' ? ' → ' + m.ipUrl : ''}`);
+    if (m.reason === 'slot' || m.reason === 'slot_reset') {
+      ipChip.delete(b.ip);
+      const nb = byIp(m.ip);
+      if (nb && nb !== b) {
+        if (!nb.online) ipChip.delete(nb.ip);
+        nb.expectRebootUntil = now() + 30000;
+        moving.set(m.chipId, { from: b.ip, to: nb.ip });
+      }
+      if (pageBoard === b) redirectTo = { chipId: m.chipId, ip: m.ip };
+    }
+  }
+
+  // Non-blocking error notice (command errors used to land only in the dashboard event log).
+  function toast(text) {
+    const t = document.createElement('div');
+    t.className = 'toast';
+    t.textContent = text;
+    document.body.appendChild(t);
+    setTimeout(() => t.remove(), 6000);
+  }
+
+  function sendCmd(b, obj) {
+    if (!b) return;
+    const s = JSON.stringify(obj);
+    if (b.ws && b.wsState === 'open') { b.ws.send(s); dlog('tx', `${b.ip}: ${s}`); return; }
+    dlog('tx', `${b.ip}: POST /api/cmd ${s}`);
+    fetch(b.base + '/api/cmd', { method: 'POST', body: s, headers: { 'Content-Type': 'text/plain' } })
+      .then(r => r.json()).then(m => onMessage(b, m)).catch(e => dlog('err', `${b.ip}: ${e.message}`));
+  }
+
+  function assignSlot(b, slot) {
+    if (!b || !b.tel) return;
+    const target = byIp(CANDIDATES[slot].ip);
+    if (target && target !== b && target.online)
+      return alert(`${slotName(slot)} (${target.ip}) is already used by another board.`);
+    if (!confirm(`Move board ${b.tel.chipId} from ${b.ip} to ${slotName(slot)} (${CANDIDATES[slot].ip}, ${CANDIDATES[slot].host})?\nIt will reboot and come back on the new address.`)) return;
+    b.expectRebootUntil = now() + 30000;
+    sendCmd(b, { cmd: 'slot', slot });
+  }
+
+  function nextFreeSlot() {
+    for (let s = 1; s <= 4; s++) if (!byIp(CANDIDATES[s].ip).online) return s;
+    return 0;
+  }
+
+  // ---------------- collision banner ----------------
+  let collisionBoard = null;
+  function showCollision(b, oldChip, newChip) {
+    const key = `${b.ip}|${oldChip}|${newChip}`;
+    if (collisionDismissed === key) return;
+    collisionBoard = b;
+    $('colIp').textContent = b.ip;
+    $('colText').textContent = `The board answering on ${b.ip} changed from chip ${oldChip} to ${newChip} without a reboot notice. ` +
+      'Two boards probably share this address, so the host only reaches one of them (the other pulses amber). ' +
+      'Give the board you can see a slot of its own, then reconnect the other one.';
+    $('collision').classList.remove('hidden');
+    $('collision').dataset.key = key;
+    dlog('err', `IP collision on ${b.ip}: ${oldChip} → ${newChip}`);
+    fillSlotSelect($('colSlot'), b, true);
+  }
+  $('colDismiss').onclick = () => { collisionDismissed = $('collision').dataset.key; $('collision').classList.add('hidden'); };
+  $('colAssign').onclick = () => { if (collisionBoard) { assignSlot(collisionBoard, +$('colSlot').value); $('collision').classList.add('hidden'); } };
+
+  function fillSlotSelect(sel, b, freeOnly) {
+    const cur = b && b.tel ? b.tel.slot : 0;
+    const keep = sel.value;
+    sel.innerHTML = '';
+    for (let s = 0; s <= 4; s++) {
+      if (freeOnly && s === cur) continue;
+      const o = document.createElement('option');
+      const other = byIp(CANDIDATES[s].ip);
+      const taken = other !== b && other.online;
+      o.value = s;
+      o.textContent = `${slotName(s)}${s === cur ? ' (current)' : ''}${taken ? ' (in use)' : ''}`;
+      o.disabled = taken;
+      sel.appendChild(o);
+    }
+    const nf = nextFreeSlot();
+    sel.value = keep && sel.querySelector(`option[value="${keep}"]:not([disabled])`) ? keep : String(freeOnly ? nf || 1 : cur);
+  }
+
+  // =====================================================================
+  // Rendering (rAF-throttled; cards are created once and updated in place)
+  // =====================================================================
+  let rafPending = false;
+  function schedule() { if (!rafPending) { rafPending = true; requestAnimationFrame(render); } }
+
+  function makeCard(b) {
+    const el = document.createElement('div');
+    el.className = 'card';
+    el.innerHTML = `
+      <div class="top"><span class="row" style="gap:8px"><span class="dot"></span><span class="ip"></span></span><span class="slotb"></span></div>
+      <div class="meta"><a class="host" target="_blank" rel="noopener"></a><span class="chip"></span></div>
+      <div class="meta"><span>cnt <b class="cnt"></b></span><span class="every"></span><span class="ver"></span></div>
+      <div class="row">
+        <button class="small idf">Identify (Blink LED)</button>
+        <select class="slotsel" aria-label="Slot"></select>
+        <button class="small asg">Assign</button>
+      </div>`;
+    el.onclick = (e) => { if (!e.target.closest('button,select,a')) setActive(b.ip); };
+    el.querySelector('.idf').onclick = () => sendCmd(b, { cmd: 'identify' });
+    el.querySelector('.asg').onclick = () => {
+      const s = +el.querySelector('.slotsel').value;
+      if (b.tel && s === b.tel.slot) return;
+      assignSlot(b, s);
+    };
+    el.querySelector('.slotsel').onfocus = () => fillSlotSelect(el.querySelector('.slotsel'), b, false);
+    $('cards').appendChild(el);
+    b.card = el;
+  }
+
+  function renderCards() {
+    let any = false;
+    for (const b of boards) {
+      if (!b.card) makeCard(b);
+      const el = b.card, m = b.tel;
+      const show = b.online && m;
+      el.classList.toggle('hidden', !show);
+      if (!show) continue;
+      any = true;
+      el.classList.toggle('active', b.ip === activeIp);
+      el.querySelector('.dot').className = 'dot ' + (b.wsState === 'open' ? 'open' : b.wsState === 'connecting' ? 'connecting' : 'closed');
+      el.querySelector('.dot').title = 'WebSocket: ' + b.wsState;
+      el.querySelector('.ip').textContent = b.ip;
+      const sb = el.querySelector('.slotb');
+      sb.textContent = slotName(m.slot); sb.classList.toggle('def', !m.slot);
+      const a = el.querySelector('.host'); a.textContent = m.hostname; a.href = `http://${m.hostname}/`;
+      el.querySelector('.chip').textContent = m.chipId;
+      el.querySelector('.cnt').textContent = m.counter;
+      el.querySelector('.every').textContent = 'every ' + fmtMs(m.intervalMs);
+      el.querySelector('.ver').textContent = m.version;
+      const sel = el.querySelector('.slotsel');
+      if (document.activeElement !== sel && sel.dataset.slot !== String(m.slot) + '|' + online().length) {
+        fillSlotSelect(sel, b, false);
+        sel.dataset.slot = String(m.slot) + '|' + online().length;
+      }
+    }
+    $('noBoards').classList.toggle('hidden', any);
+    $('scan').innerHTML = boards.map(b => `<span class="${b.online ? 'up' : ''}" title="${b.host}">${b.ip}</span>`).join('');
+    $('scanInfo').textContent = `${online().length} online · empty addresses re-probed every 3–30 s`;
+  }
+
+  function renderPrompt() {
+    const def = byIp('192.168.7.1');
+    const others = online().filter(b => b !== def);
+    const p = $('defPrompt');
+    if (!(def.online && def.tel)) { p.classList.add('hidden'); return; }
+    const nf = nextFreeSlot();
+    p.classList.remove('hidden');
+    p.classList.toggle('red', others.length > 0);
+    p.classList.toggle('amber', others.length === 0);
+    $('defText').innerHTML = others.length
+      ? `<b>Board ${def.tel.chipId} is on the default address 192.168.7.1</b> while ${others.length} other board(s) are connected. Assign it to a free slot <b>before</b> you plug in another unassigned board, or the two will collide on 192.168.7.1.`
+      : `Board <span class="mono">${def.tel.chipId}</span> uses the default address <span class="mono">192.168.7.1</span>. Before you plug in a second KB2040, give this one a slot so each board gets its own subnet and mDNS name.`;
+    const btn = $('defAssign');
+    btn.disabled = !nf;
+    btn.textContent = nf ? `Assign to Slot ${nf} (${CANDIDATES[nf].ip})` : 'All slots in use';
+    btn.onclick = () => assignSlot(def, nf);
+    $('defIdentify').onclick = () => sendCmd(def, { cmd: 'identify' });
+  }
+
+  const intToSlider = (ms) => Math.round(1000 * Math.log(ms / 50) / Math.log(200));
+  const sliderToInt = (v) => { const ms = 50 * Math.pow(200, v / 1000); return ms < 1000 ? Math.round(ms / 10) * 10 : Math.round(ms / 50) * 50; };
+
+  function renderDash() {
+    const b = activeIp ? byIp(activeIp) : null;
+    const m = b && b.online ? b.tel : null;
+    const live = !!m;
+    document.querySelectorAll('[data-led],[data-ms],#dIdentify,#dInt').forEach(e => e.disabled = !live);
+    const badge = $('dBadge');
+    if (!b || !b.tel) { badge.className = 'badge off'; badge.textContent = 'No board'; }
+    else if (b.wsState === 'open') { badge.className = 'badge on'; badge.textContent = 'WebSocket live'; }
+    else if (now() < b.expectRebootUntil) { badge.className = 'badge wait'; badge.textContent = 'Rebooting…'; }
+    else if (b.online) { badge.className = 'badge wait'; badge.textContent = 'Connecting…'; }
+    else { badge.className = 'badge err'; badge.textContent = 'Offline'; }
+    $('dHost').textContent = m ? '· ' + m.hostname : '';
+    $('dCounter').textContent = m ? m.counter : '—';
+    const led = $('dLed'); led.classList.toggle('unknown', !m); led.classList.toggle('lit', !!(m && m.led));
+    const hv = $('hdrVersion');
+    hv.classList.toggle('hidden', !m);
+    if (m) hv.textContent = 'build ' + m.version;
+    $('dSlot').textContent = m ? slotName(m.slot) : '—';
+    $('dIp').textContent = m ? m.ip : '—';
+    $('dChip').textContent = m ? m.chipId : '—';
+    $('dMac').textContent = m ? m.mac : '—';
+    $('dUp').textContent = m ? fmtUp(m.uptimeMs) : '—';
+    $('dWs').textContent = m ? m.wsClients + ' / 3' : '—';
+    $('dMissed').textContent = m ? b.missed : '—';
+    if (m) {
+      $('dIntVal').textContent = fmtMs(m.intervalMs);
+      $('dIntHz').textContent = '(' + +(1000 / m.intervalMs).toFixed(2) + ' Hz)';
+      if (document.activeElement !== $('dInt') && !sliderBusy) $('dInt').value = intToSlider(m.intervalMs);
+      document.querySelectorAll('[data-ms]').forEach(e => e.classList.toggle('sel', +e.dataset.ms === m.intervalMs));
+      const ts = b.times;
+      if (ts.length >= 3) {
+        const d = []; for (let i = 1; i < ts.length; i++) d.push(ts[i] - ts[i - 1]);
+        const mean = d.reduce((a, c) => a + c, 0) / d.length;
+        const sd = Math.sqrt(d.reduce((a, c) => a + (c - mean) ** 2, 0) / d.length);
+        $('dRate').textContent = (1000 / mean).toFixed(2) + ' Hz';
+        $('dJitter').textContent = sd.toFixed(1) + ' ms';
+      } else { $('dRate').textContent = '…'; $('dJitter').textContent = '…'; }
+    } else { $('dIntVal').textContent = '—'; $('dIntHz').textContent = ''; $('dRate').textContent = '—'; $('dJitter').textContent = '—'; }
+  }
+
+  function render() {
+    rafPending = false;
+    renderCards();
+    renderPrompt();
+    renderDash();
+    renderOtaTargets();
+  }
+  setInterval(schedule, 1000);
+
+  function beat() { const hb = $('dHb'); hb.classList.remove('beat'); void hb.offsetWidth; hb.classList.add('beat'); }
+
+  function setActive(ip) {
+    if (activeIp === ip) return;
+    activeIp = ip;
+    store.set('active', ip);
+    schedule();
+  }
+
+  // ---------------- dashboard controls ----------------
+  const activeBoard = () => activeIp ? byIp(activeIp) : null;
+  document.querySelectorAll('[data-led]').forEach(btn => btn.onclick = () => sendCmd(activeBoard(), { cmd: 'led', state: btn.dataset.led }));
+  $('dIdentify').onclick = () => sendCmd(activeBoard(), { cmd: 'identify' });
+  document.querySelectorAll('[data-ms]').forEach(btn => btn.onclick = () => sendCmd(activeBoard(), { cmd: 'interval', ms: +btn.dataset.ms }));
+  let sliderBusy = false, sliderTimer = null;
+  $('dInt').addEventListener('input', () => {
+    sliderBusy = true;
+    const ms = sliderToInt(+$('dInt').value);
+    $('dIntVal').textContent = fmtMs(ms);
+    clearTimeout(sliderTimer);
+    sliderTimer = setTimeout(() => { sendCmd(activeBoard(), { cmd: 'interval', ms }); sliderBusy = false; }, 150);
+  });
+  $('dClear').onclick = () => $('dLog').textContent = '';
+
+  // =====================================================================
+  // Firmware update (3 sources × 2 transports)
+  // =====================================================================
+  const OTA = { busy: false, t0: 0, await: null, tab: 'url' };
+  const defaultUrl = (location.port === '8000' && location.hostname === 'localhost')
+    ? location.origin + '/build/firmware.ino.bin' : 'http://localhost:8000/build/firmware.ino.bin';
+  $('oUrl').value = store.get('otaUrl', defaultUrl);
+
+  document.querySelectorAll('[data-tab]').forEach(btn => btn.onclick = () => {
+    OTA.tab = btn.dataset.tab;
+    document.querySelectorAll('[data-tab]').forEach(x => x.classList.toggle('sel', x === btn));
+    document.querySelectorAll('[data-pane]').forEach(p => p.classList.toggle('hidden', p.dataset.pane !== OTA.tab));
+  });
+
+  function boardLabel(b) { return `${b.ip} · ${slotName(b.tel.slot)} · ${b.tel.chipId.slice(-6)}`; }
+  // Keeps the user's explicit choice while it is still online, else follows `prefer`, else the first entry.
+  function fillBoardSelect(sel, list, prefer) {
+    if (document.activeElement === sel) return;
+    const sig = list.map(b => b.ip + b.tel.chipId).join(',');
+    if (sel.dataset.sig !== sig) {
+      sel.innerHTML = list.map(b => `<option value="${b.ip}">${boardLabel(b)}</option>`).join('');
+      sel.dataset.sig = sig;
+    }
+    const has = (ip) => ip && list.some(b => b.ip === ip);
+    const want = has(sel.dataset.choice) ? sel.dataset.choice : has(prefer) ? prefer : list[0] ? list[0].ip : '';
+    if (sel.value !== want) sel.value = want;
+  }
+  ['oSrc', 'oDst'].forEach(id => $(id).onchange = () => { $(id).dataset.choice = $(id).value; schedule(); });
+
+  function otaTargetFor(dstIp) {
+    if ($('oTransport').value === 'serial') return U.board ? { serial: true, chipId: U.board.chipId, label: `Web Serial board ${U.board.chipId}` } : null;
+    const b = byIp(dstIp || activeIp);
+    return b && b.online && b.tel ? { board: b, label: `${b.ip} (${b.tel.hostname})` } : null;
+  }
+
+  function renderOtaTargets() {
+    const list = online();
+    const act = activeBoard();
+    fillBoardSelect($('oSrc'), list, act && act.online ? act.ip : null);
+    const others = list.filter(b => b.ip !== $('oSrc').value);
+    fillBoardSelect($('oDst'), others, null);
+    const t = otaTargetFor();
+    $('oTarget').textContent = t ? t.label : ($('oTransport').value === 'serial' ? 'connect Web Serial first' : 'no board');
+    const can = !OTA.busy;
+    $('oUrlGo').disabled = !can || !t;
+    $('oCloneGo').disabled = !can || list.length < 2 || !$('oDst').value;
+    $('oCloneHint').classList.toggle('warn', list.length < 2);
+    $('oFile').disabled = !can;
+  }
+  $('oTransport').onchange = schedule;
+
+  function otaUi(state, text) {
+    const map = { idle: ['off', 'Idle'], busy: ['info', 'Working…'], ok: ['on', 'Done'], err: ['err', 'Failed'], wait: ['wait', 'Rebooting…'] };
+    const [cls, label] = map[state];
+    $('oBadge').className = 'badge ' + cls; $('oBadge').textContent = label;
+    $('oBar').classList.toggle('okb', state === 'ok'); $('oBar').classList.toggle('errb', state === 'err');
+    if (text !== undefined) $('oPhase').textContent = text;
+  }
+  function otaProgress(sent, total) {
+    const pct = total ? Math.min(100, sent / total * 100) : 0;
+    $('oBar').firstElementChild.style.width = pct.toFixed(1) + '%';
+    $('oPct').textContent = pct.toFixed(0) + '%';
+    $('oBytes').textContent = `${(sent / 1024).toFixed(1)} / ${(total / 1024).toFixed(1)}`;
+    const el = (now() - OTA.t0) / 1000;
+    $('oTime').textContent = el.toFixed(1) + ' s';
+    $('oRate').textContent = el > 0.05 ? (sent / 1024 / el).toFixed(1) + ' KB/s' : '—';
+  }
+
+  async function fetchBinary(url, what) {
+    olog('sys', `fetching ${what}: ${url}`);
+    let r;
+    try { r = await fetch(url, { cache: 'no-store' }); }
+    catch (e) { throw new Error(`could not fetch ${url} (${e.message}). Is the server running and does it send CORS headers? Use: python3 serve.py`); }
+    if (!r.ok) throw new Error(`${url}: HTTP ${r.status}`);
+    const total = +r.headers.get('Content-Length') || 0;
+    const reader = r.body.getReader();
+    const parts = []; let got = 0;
+    OTA.t0 = now();
+    for (;;) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      parts.push(value); got += value.length;
+      otaProgress(got, total || got);
+      $('oPhase').textContent = `downloading ${what} into RAM`;
+    }
+    const buf = new Uint8Array(got); let o = 0;
+    for (const p of parts) { buf.set(p, o); o += p.length; }
+    return { bytes: buf, crcHeader: r.headers.get('X-CRC32'), version: r.headers.get('X-Firmware-Version') };
+  }
+
+  function validateImage(u8) {
+    if (u8.length < 4096) throw new Error(`image is only ${u8.length} bytes, not a firmware .bin`);
+    if (u8.length > 4 * 1024 * 1024) throw new Error('image is larger than the 4 MB sketch area');
+    if (u8[0] === 0x55 && u8[1] === 0x46 && u8[2] === 0x32 && u8[3] === 0x0A) throw new Error('this is a .uf2 file, upload the .bin instead');
+  }
+
+  function uploadHttp(b, u8, crcHex) {
+    return new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open('POST', b.base + '/api/update');
+      xhr.setRequestHeader('Content-Type', 'application/octet-stream');
+      xhr.setRequestHeader('X-CRC32', crcHex);
+      xhr.timeout = 180000;
+      // Browser-side progress runs ahead (OS socket buffers); the board's own WS progress wins once it arrives.
+      xhr.upload.onprogress = (e) => { if (!OTA.devProgress) otaProgress(e.loaded, e.total || u8.length); };
+      xhr.onload = () => {
+        let m = null; try { m = JSON.parse(xhr.responseText); } catch {}
+        if (xhr.status === 200 && m && m.ok) resolve(m);
+        else reject(new Error((m && m.error) || `HTTP ${xhr.status}`));
+      };
+      xhr.onerror = () => reject(new Error('network error during upload'));
+      xhr.ontimeout = () => reject(new Error('upload timed out'));
+      xhr.send(u8);
+    });
+  }
+
+  async function flash(u8, target, source) {
+    validateImage(u8);
+    const crcHex = hex8(crc32(u8));
+    olog('sys', `image ${(u8.length / 1024).toFixed(1)} KB, CRC32 ${crcHex} (${source}) → ${target.label}`);
+    OTA.t0 = now();
+    OTA.devProgress = false;
+    OTA.target = target.board || null;
+    otaProgress(0, u8.length);
+    otaUi('busy', 'streaming to board…');
+    let res, before;
+    if (target.serial) {
+      before = U.board;
+      const b = boards.find(x => x.tel && x.tel.chipId === target.chipId);
+      if (b) b.expectRebootUntil = now() + 60000;
+      res = await uploadSerial(u8, crcHex);
+    } else {
+      const b = target.board;
+      before = b.tel;
+      b.expectRebootUntil = now() + 60000;
+      res = await uploadHttp(b, u8, crcHex);
+    }
+    // Completion = the same chip reports again over a (re)opened WebSocket with a reset uptime.
+    OTA.await = { chipId: before.chipId, oldVersion: before.version, preUptime: before.uptimeMs, serial: !!target.serial, until: now() + 45000 };
+    otaProgress(u8.length, u8.length);
+    olog('okl', `staged & verified on device: ${res.size} bytes, CRC32 ${res.crc32}, ${res.ms} ms. Board reboots, the OTA bootloader copies the image.`);
+    otaUi('wait', 'board is rebooting into the new firmware…');
+  }
+
+  function otaOnTelemetry(b, m) {
+    const a = OTA.await;
+    if (!a) return;
+    if (m.chipId !== a.chipId || !b.ws) return;  // the first frame on the reconnected WebSocket
+    if (m.uptimeMs >= a.preUptime) return;       // still the pre-reboot instance
+    OTA.await = null;
+    const changed = m.version !== a.oldVersion;
+    olog('okl', `✔ ${m.hostname} is back (WebSocket reconnected), running build ${m.version}${changed ? '' : ' (same build as before)'}`);
+    otaUi('ok', `running build ${m.version}`);
+    OTA.busy = false; schedule();
+  }
+  setInterval(() => {
+    if (OTA.await && now() > OTA.await.until) {
+      olog('err', OTA.await.serial
+        ? 'no board with that chip ID reappeared on USB Ethernet within 45 s. Reconnect Web Serial to check the new build.'
+        : 'board did not come back within 45 s. Check the USB connection; it may still be copying the image.');
+      OTA.await = null; OTA.busy = false; otaUi('err', 'no reconnect'); schedule();
+    }
+  }, 1000);
+
+  function onDeviceOta(b, m) {
+    if (OTA.busy && OTA.target === b && (m.phase === 'progress' || m.phase === 'done') && m.total) {
+      OTA.devProgress = true;
+      otaProgress(m.received, m.total);
+      if (m.phase === 'progress') $('oPhase').textContent = 'board is writing the image to LittleFS…';
+    }
+    if (m.phase === 'start') olog('rx', `${b.ip}: device accepted ${m.total} bytes from ${m.source}`);
+    else if (m.phase === 'error') olog('err', `${b.ip}: device reported error`);
+    else if (m.phase === 'done') olog('rx', `${b.ip}: device staged image (${m.source})`);
+  }
+
+  async function runOta(getImage) {
+    if (OTA.busy) return;
+    OTA.busy = true; schedule();
+    try {
+      const { bytes, source, target } = await getImage();
+      if (!target) throw new Error('no target board');
+      await flash(bytes, target, source);
+    } catch (e) {
+      olog('err', e.message);
+      otaUi('err', e.message);
+      OTA.busy = false; OTA.await = null; schedule();
+    }
+  }
+
+  $('oUrlGo').onclick = () => runOta(async () => {
+    const url = $('oUrl').value.trim();
+    store.set('otaUrl', url);
+    const target = otaTargetFor();
+    const img = await fetchBinary(url, 'firmware');
+    return { bytes: img.bytes, source: 'url', target };
+  });
+
+  $('oCloneGo').onclick = () => runOta(async () => {
+    const src = byIp($('oSrc').value), dst = byIp($('oDst').value);
+    if (!src || !dst || src === dst) throw new Error('pick two different boards');
+    const target = $('oTransport').value === 'serial' ? otaTargetFor() : otaTargetFor(dst.ip);
+    if (target && target.serial && target.chipId === src.tel.chipId) throw new Error('Web Serial is connected to the source board; switch transport to USB Ethernet');
+    const img = await fetchBinary(src.base + '/api/firmware.bin', `running image of ${src.ip}`);
+    const c = hex8(crc32(img.bytes));
+    if (img.crcHeader && img.crcHeader.toUpperCase() !== c) throw new Error(`clone read CRC mismatch (${c} vs ${img.crcHeader})`);
+    olog('okl', `read ${img.bytes.length} bytes from ${src.ip} XIP flash (build ${img.version || '?'}), CRC32 ${c} verified`);
+    return { bytes: img.bytes, source: `clone of ${src.ip}`, target };
+  });
+
+  function flashFile(file) {
+    if (!file) return;
+    runOta(async () => {
+      olog('sys', `file: ${file.name} (${file.size} bytes)`);
+      return { bytes: new Uint8Array(await file.arrayBuffer()), source: file.name, target: otaTargetFor() };
+    });
+  }
+  $('oFile').onchange = () => { flashFile($('oFile').files[0]); $('oFile').value = ''; };
+  const drop = $('oDrop');
+  ['dragenter', 'dragover'].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.add('over'); }));
+  ['dragleave', 'drop'].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.remove('over'); }));
+  drop.addEventListener('drop', e => flashFile(e.dataTransfer.files[0]));
+  $('oClear').onclick = () => $('oLog').textContent = '';
+
+  // =====================================================================
+  // Web Serial (CDC-ACM)
+  // =====================================================================
+  const U = { port: null, reader: null, writer: null, closing: false, board: null, waiters: new Set() };
+  const uLog = $('uLog');
+  const uBtns = () => [...document.querySelectorAll('[data-u]'), $('uBoot'), $('uCmd'), $('uSend')];
+
+  // Android: Chrome's native Web Serial lists only Bluetooth ports there, so serial over WebUSB
+  // (Google's web-serial-polyfill) is the way in. On desktops the OS serial driver owns the
+  // interface, so WebUSB cannot claim it: native Web Serial stays the default there.
+  const isAndroid = /Android/i.test(navigator.userAgent);
+  const PAGES_URL = 'https://karelv.github.io/kb2040-serial-ethernet/';
+  const hasUsb = window.isSecureContext && 'usb' in navigator;
+  // Vendored copy next to the page (cached by the service worker, so it works offline); the CDN
+  // is the fallback for pages that have no vendor/ folder next to them (file://, board-served page).
+  const POLYFILL_URLS = [new URL('vendor/web-serial-polyfill.js', document.baseURI).href,
+    'https://cdn.jsdelivr.net/npm/web-serial-polyfill@1.0.15/dist/serial.js'];
+  let polyfillPromise = null;
+  const loadPolyfill = () => (polyfillPromise ||= import(POLYFILL_URLS[0]).catch(() => import(POLYFILL_URLS[1]))
+    .then(m => m.serial)
+    .catch(e => { polyfillPromise = null; throw new Error('could not load web-serial-polyfill (' + e.message + ')'); }));
+
+  function uiUart(connected) {
+    $('uConnect').disabled = connected || !('serial' in navigator) || !window.isSecureContext;
+    $('uConnectUsb').disabled = connected || !hasUsb;
+    $('uDisconnect').disabled = !connected;
+    uBtns().forEach(b => b.disabled = !connected);
+    const bd = $('uBadge'); bd.className = 'badge ' + (connected ? 'on' : 'off'); bd.textContent = connected ? 'Connected' : 'Disconnected';
+    if (!connected) { U.board = null; $('uChip').textContent = ''; $('uCounter').textContent = '—'; $('uLed').className = 'led unknown'; }
+    schedule();
+  }
+
+  function serialSupportNote() {
+    const n = $('uNote');
+    if (!window.isSecureContext) {
+      n.innerHTML = 'Web Serial needs a secure context, and <code>' + location.host + '</code> over plain HTTP is not one, so this panel is off here. ' +
+        'Use the hosted console at <a href="' + PAGES_URL + '">' + PAGES_URL + '</a> (installable, works offline), ' +
+        'or run <code>python3 serve.py</code> and open <code>http://localhost:8000/web/</code>.';
+    } else if (isAndroid && hasUsb) {
+      n.textContent = 'Android: Chrome\'s Web Serial only lists Bluetooth ports here. Use "Connect via WebUSB" for a USB-connected KB2040.';
+    } else if (!('serial' in navigator) && !hasUsb) {
+      n.textContent = 'This browser has neither Web Serial nor WebUSB. Use Chrome or Edge.';
+    } else return;
+    n.classList.remove('hidden');
+  }
+
+  function handleUartLine(line) {
+    line = line.replace(/\r$/, '');
+    if (!line) return;
+    let m = null; try { m = JSON.parse(line); } catch {}
+    if (m && m.type === 'ota') [...U.waiters].forEach(w => w(m));
+    if (!m || m.type !== 'telemetry' || $('uShowTel').checked) logLine(uLog, 'rx', line);
+    if (!m) return;
+    if (m.type === 'telemetry') {
+      U.board = m;
+      $('uChip').textContent = `${m.chipId} · ${slotName(m.slot)} · ${m.ip}`;
+      $('uCounter').textContent = m.counter;
+      $('uLed').className = 'led' + (m.led ? ' lit' : '');
+    }
+  }
+
+  async function uartConnect(kind) {
+    try {
+      const filters = [{ usbVendorId: 0x239a }, { usbVendorId: 0x2e8a }];
+      const api = kind === 'usb' ? await loadPolyfill() : navigator.serial;
+      const port = await api.requestPort({ filters });
+      await port.open({ baudRate: 115200, bufferSize: 16384 });
+      U.port = port; U.kind = kind; U.closing = false;
+      U.writer = port.writable.getWriter();
+      uiUart(true);
+      logLine(uLog, 'sys', kind === 'usb' ? 'port opened (WebUSB polyfill)' : 'port opened');
+      if (port.addEventListener) port.addEventListener('disconnect', () => { logLine(uLog, 'sys', 'device disconnected'); uartCleanup(); });
+      readLoop(port);
+      uartSend('STATE');
+    } catch (e) {
+      if (e.name !== 'NotFoundError') logLine(uLog, 'err', 'connect failed: ' + e.message);
+    }
+  }
+
+  async function readLoop(port) {
+    const dec = new TextDecoder();
+    let buf = '';
+    while (port.readable && !U.closing) {
+      U.reader = port.readable.getReader();
+      try {
+        for (;;) {
+          const { value, done } = await U.reader.read();
+          if (done) break;
+          buf += dec.decode(value, { stream: true });
+          let i;
+          while ((i = buf.indexOf('\n')) >= 0) { handleUartLine(buf.slice(0, i)); buf = buf.slice(i + 1); }
+          if (buf.length > 8192) buf = '';
+        }
+      } catch (e) {
+        if (!U.closing) logLine(uLog, 'err', 'read error: ' + e.message);
+        // WebUSB: a failed transfer usually means the device went away; don't spin on a dead port.
+        if (U.kind === 'usb' && !U.closing) { uartCleanup(); }
+      } finally {
+        try { U.reader.releaseLock(); } catch {}
+        U.reader = null;
+      }
+    }
+  }
+
+  async function uartWrite(bytes) { if (!U.writer) throw new Error('Web Serial not connected'); await U.writer.write(bytes); }
+  async function uartSend(cmd) {
+    try { await uartWrite(new TextEncoder().encode(cmd + '\n')); logLine(uLog, 'tx', cmd); }
+    catch (e) { logLine(uLog, 'err', 'write failed: ' + e.message); }
+  }
+
+  // Several waiters can be pending at once (last chunk: its ack + the final result).
+  function waitOta(pred, ms, what) {
+    return new Promise((resolve, reject) => {
+      const w = (m) => {
+        if (m.phase === 'error') { finish(); reject(new Error(m.error || 'device error')); }
+        else if (pred(m)) { finish(); resolve(m); }
+      };
+      const t = setTimeout(() => { finish(); reject(new Error('timeout waiting for ' + what)); }, ms);
+      const finish = () => { clearTimeout(t); U.waiters.delete(w); };
+      U.waiters.add(w);
+    });
+  }
+
+  async function uploadSerial(u8, crcHex) {
+    if (!U.writer) throw new Error('Web Serial not connected');
+    const ready = waitOta(m => m.phase === 'ready', 5000, 'OTA ready');
+    await uartSend(`OTA:START:${u8.length}:${crcHex}`);
+    const r = await ready;
+    const chunk = r.chunk || 4096;
+    for (let off = 0; off < u8.length; off += chunk) {
+      const end = Math.min(off + chunk, u8.length);
+      const ack = waitOta(m => m.phase === 'ack' && m.received >= end, 15000, `ack @${end}`);
+      const last = end === u8.length;
+      const done = last ? waitOta(m => m.phase === 'done' || m.phase === 'error', 30000, 'OTA result') : null;
+      if (done) done.catch(() => {});  // handled below; avoid an unhandled rejection if the ack fails first
+      await uartWrite(u8.subarray(off, end));
+      await ack;
+      otaProgress(end, u8.length);
+      if (last) { const res = await done; if (!res.ok) throw new Error(res.error || 'device rejected image'); return res; }
+    }
+  }
+
+  async function uartCleanup() {
+    U.closing = true;
+    const port = U.port;
+    U.port = null;
+    try { if (U.reader) await U.reader.cancel(); } catch {}
+    try { if (U.writer) U.writer.releaseLock(); } catch {}
+    U.writer = null;
+    try { if (port) await port.close(); } catch {}
+    U.kind = null;
+    uiUart(false);
+  }
+
+  $('uConnect').onclick = () => uartConnect('serial');
+  $('uConnectUsb').onclick = () => uartConnect('usb');
+  $('uDisconnect').onclick = async () => { await uartCleanup(); logLine(uLog, 'sys', 'port closed'); };
+  document.querySelectorAll('[data-u]').forEach(b => b.onclick = () => uartSend(b.dataset.u));
+  $('uSend').onclick = () => { const v = $('uCmd').value.trim(); if (v) { uartSend(v); $('uCmd').value = ''; } };
+  $('uCmd').addEventListener('keydown', e => { if (e.key === 'Enter') $('uSend').click(); });
+  $('uBoot').onclick = async () => {
+    if (!confirm('Reboot the KB2040 into the UF2 bootloader (RPI-RP2 drive)?')) return;
+    await uartSend('BOOTSEL');
+    logLine(uLog, 'sys', 'bootloader requested. The board will reappear as RPI-RP2');
+    setTimeout(uartCleanup, 300);
+  };
+  $('uClear').onclick = () => uLog.textContent = '';
+
+  // ---------------- init ----------------
+  serialSupportNote();
+  uiUart(false);
+  if (window.isSecureContext && 'serial' in navigator) {
+    navigator.serial.addEventListener('connect', () => logLine(uLog, 'sys', 'serial device attached. Click Connect'));
+  }
+  if (hasUsb) {
+    $('uConnectUsb').classList.remove('hidden');
+    navigator.usb.addEventListener('disconnect', (e) => {
+      if (U.kind === 'usb' && U.port && e.device === U.port.device_) { logLine(uLog, 'sys', 'device disconnected'); uartCleanup(); }
+    });
+    if (isAndroid) {
+      // WebUSB first on Android; the serial panel is the main control path there.
+      $('uConnectUsb').classList.add('primary');
+      $('uConnect').classList.remove('primary');
+      $('uart').open = true;
+      $('oTransport').value = 'serial';
+      loadPolyfill().catch(() => {});  // preload so requestDevice() runs inside the click's user activation
+    }
+  }
+  // =====================================================================
+  // PWA: offline cache + install, and the HTTPS -> board (plain HTTP) caveat
+  // =====================================================================
+  if ('serviceWorker' in navigator && window.isSecureContext && location.protocol !== 'file:') {
+    navigator.serviceWorker.register('sw.js').catch(e => dlog('err', 'service worker: ' + e.message));
+  }
+  let installEvt = null;
+  window.addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); installEvt = e; $('installBtn').classList.remove('hidden'); });
+  window.addEventListener('appinstalled', () => { installEvt = null; $('installBtn').classList.add('hidden'); });
+  $('installBtn').onclick = async () => {
+    if (!installEvt) return;
+    installEvt.prompt();
+    await installEvt.userChoice.catch(() => {});
+    installEvt = null; $('installBtn').classList.add('hidden');
+  };
+  if (location.protocol === 'https:') {
+    // The boards speak plain HTTP/WS. Chromium lets an HTTPS page reach private IPs after a
+    // "local network access" prompt; Safari and Firefox block it as mixed content.
+    const n = $('discNote');
+    n.innerHTML = navigator.userAgentData
+      ? 'USB Ethernet from this HTTPS page: allow <b>local network access</b> when the browser asks.' +
+        (isAndroid ? ' On Android this works only while Wi-Fi and mobile data are off; use the serial panel otherwise.' : '')
+      : 'This browser blocks the boards\' plain-HTTP API from an HTTPS page. For USB Ethernet open ' +
+        '<a href="http://192.168.7.1/">http://192.168.7.1/</a> (or <code>http://192.168.7N.1/</code>) directly.';
+    n.classList.remove('hidden');
+  }
+
+  dlog('sys', `scanning ${boards.map(b => b.ip).join(', ')}`);
+  scanAll();
+  schedule();
+})();
+</script>
+</body>
+</html>

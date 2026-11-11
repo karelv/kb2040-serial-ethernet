@@ -1,0 +1,8 @@
+.arduino/
+build/
+firmware/webui.h.tmp
+firmware/build_info.h
+diag/
+firmware/webui.h
+firmware/webassets.h
+.DS_Store
