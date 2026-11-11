@@ -66,14 +66,16 @@ Three ways, all the same `web/index.html`:
 
 | Where | Serial (Web Serial / WebUSB) | USB Ethernet | Offline / install |
 |---|---|---|---|
-| **GitHub Pages** `https://karelv.github.io/kb2040-serial-ethernet/` | yes (HTTPS) | Chrome/Edge: yes, after the *local network access* prompt. Safari/Firefox: blocked as mixed content (HTTPS page → `http://` board) | yes: service worker + manifest, *Install app* |
+| **GitHub Pages** `https://karelv.github.io/kb2040-serial-ethernet/` | yes (HTTPS) | **not used**: only links that open the board's own page (see below) | yes: service worker + manifest, *Install app* |
 | **Board** `http://192.168.7.1/`, `http://kb2040-N.local/` | no (plain HTTP isn't a secure context) | yes | always offline (served by the board); *Add to Home Screen* gets the icon |
 | **Local** `python3 serve.py` → `http://localhost:8000/web/` | yes | yes | yes (localhost counts as secure) |
+
+The hosted HTTPS copy deliberately sends **no** `http://` / `ws://` request to a board. Every such request is mixed content (HTTPS page → plain-HTTP device): Safari and Firefox block it, and Chrome allows it only after a *local network* prompt and then shows **Not secure** in the address bar. So on HTTPS the live dashboard, board cards, slots, clone and HTTP updates are hidden, the firmware panel uses Web Serial, and the board bar has buttons that open `http://192.168.7.1/` / `http://192.168.7N.1/` (a normal navigation, so the hosted page keeps its padlock).
 
 ### Install as an app
 
 - **Desktop Chrome/Edge, Android Chrome:** open the Pages URL once while online, then use the **Install app** button in the header (or the browser's install icon/menu). After that it starts offline; when online it fetches the latest version.
-- **iPhone/iPad:** iOS has no Web Serial/WebUSB and Safari blocks the board's HTTP API from the HTTPS page, so install from the **board's own page** instead: open `http://192.168.7.1/` in Safari → Share → *Add to Home Screen*. It's served by the board, so it needs no internet.
+- **iPhone/iPad:** iOS has no Web Serial/WebUSB and the HTTPS page doesn't talk HTTP to boards, so install from the **board's own page** instead: open `http://192.168.7.1/` in Safari → Share → *Add to Home Screen*. It's served by the board, so it needs no internet.
 - Pages is redeployed by `.github/workflows/pages.yml` on every push to `main` that changes `web/`, `firmware/` or `compile.sh`. The workflow builds the firmware with the same pinned toolchain (arduino-cli 1.5.1, rp2040 core 6.3.2, NeoPixel 1.15.5) and publishes it under `firmware/`. Each deploy stamps a new cache version into `sw.js`, so installed apps update (page **and** firmware) on their next online start.
 
 ### Local server

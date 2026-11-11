@@ -55,6 +55,8 @@ input[type=range]{flex:1;min-width:140px;accent-color:var(--accent)}
 /* discovery bar */
 .disc{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:12px 14px;display:flex;flex-direction:column;gap:10px}
 .disc-head{display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center}
+a.btn{display:inline-block;font-size:13px;color:var(--text);background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:7px 12px;text-decoration:none}
+a.btn:hover{border-color:var(--accent2)} a.btn.primary{background:#1f6f5f;border-color:#2b8f7b}
 .scan{display:flex;flex-wrap:wrap;gap:6px}
 .scan span{font:11px var(--mono);padding:2px 7px;border-radius:6px;border:1px solid var(--line);color:var(--muted)}
 .scan span.up{color:var(--ok);border-color:rgba(63,185,80,.5)}
@@ -153,6 +155,7 @@ details.panel[open]>summary::before{content:'▾'}
     <div class="cards" id="cards"></div>
     <div class="empty" id="noBoards">No board found yet. Plug in a KB2040, wait for the host to get its DHCP lease (<span class="mono">192.168.7.2</span> / <span class="mono">192.168.7N.2</span>), or hold BOOT for 3 s on a board with a forgotten slot.</div>
     <div class="note hidden" id="discNote"></div>
+    <div class="hidden" id="ethLinks"></div>
   </section>
 
   <main>
@@ -318,6 +321,10 @@ details.panel[open]>summary::before{content:'▾'}
   const fmtUp = (ms) => { const s = Math.floor(ms / 1000); return `${Math.floor(s/3600)}h ${String(Math.floor(s/60)%60).padStart(2,'0')}m ${String(s%60).padStart(2,'0')}s`; };
   const slotName = (s) => s ? 'Slot ' + s : 'Default';
   const PAGES_URL = 'https://karelv.github.io/kb2040-serial-ethernet/';  // hosted console + CI firmware
+  // HTTPS copy (GitHub Pages / installed app): never talk to the boards' plain http:// or ws://.
+  // Any such request is mixed content, and Chrome then marks the whole page "Not secure".
+  // USB Ethernet features live on the board's own page instead; this copy uses USB serial.
+  const NO_HTTP = location.protocol === 'https:';
 
   // ---------------- CRC32 (IEEE) ----------------
   const CRC_T = (() => { const t = new Uint32Array(256); for (let n = 0; n < 256; n++) { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1; t[n] = c >>> 0; } return t; })();
@@ -352,7 +359,7 @@ details.panel[open]>summary::before{content:'▾'}
   }
 
   async function probe(b) {
-    if (b.probing || b.ws) return;
+    if (NO_HTTP || b.probing || b.ws) return;
     b.probing = true;
     try {
       const r = await fetchT(b.base + '/api/state', 1500);
@@ -366,7 +373,7 @@ details.panel[open]>summary::before{content:'▾'}
   function scanAll() { boards.forEach(b => { if (!b.ws) probe(b); }); }
 
   function openWs(b) {
-    if (b.ws) return;
+    if (NO_HTTP || b.ws) return;
     let ws;
     try { ws = new WebSocket(`ws://${b.ip}/ws`); } catch { return; }
     b.ws = ws; b.wsState = 'connecting'; b.wsClosing = false;
@@ -481,7 +488,7 @@ details.panel[open]>summary::before{content:'▾'}
   }
 
   function sendCmd(b, obj) {
-    if (!b) return;
+    if (!b || NO_HTTP) return;
     const s = JSON.stringify(obj);
     if (b.ws && b.wsState === 'open') { b.ws.send(s); dlog('tx', `${b.ip}: ${s}`); return; }
     dlog('tx', `${b.ip}: POST /api/cmd ${s}`);
@@ -828,6 +835,7 @@ details.panel[open]>summary::before{content:'▾'}
   }
 
   function uploadHttp(b, u8, crcHex) {
+    if (NO_HTTP) return Promise.reject(new Error('USB Ethernet is disabled on the HTTPS console; use Web Serial or the board\'s own page'));
     return new Promise((resolve, reject) => {
       const xhr = new XMLHttpRequest();
       xhr.open('POST', b.base + '/api/update');
@@ -1156,26 +1164,24 @@ details.panel[open]>summary::before{content:'▾'}
     await installEvt.userChoice.catch(() => {});
     installEvt = null; $('installBtn').classList.add('hidden');
   };
-  if (location.protocol === 'https:') {
-    // The boards speak plain HTTP/WS. Chromium lets an HTTPS page reach private IPs after a
-    // "local network access" prompt; Safari and Firefox block it as mixed content.
-    const n = $('discNote');
-    n.innerHTML = navigator.userAgentData
-      ? 'USB Ethernet from this HTTPS page: allow <b>local network access</b> when the browser asks.' +
-        (isAndroid ? ' On Android this works only while Wi-Fi and mobile data are off; use the serial panel otherwise.' : '')
-      : 'This browser blocks the boards\' plain-HTTP API from an HTTPS page. For USB Ethernet open ' +
-        '<a href="http://192.168.7.1/">http://192.168.7.1/</a> (or <code>http://192.168.7N.1/</code>) directly.';
-    n.classList.remove('hidden');
-    if (navigator.userAgentData && !isAndroid && navigator.permissions) {
-      navigator.permissions.query({ name: 'local-network-access' }).then((p) => {
-        const sync = () => n.classList.toggle('hidden', p.state === 'granted');
-        sync(); p.onchange = sync;
-      }).catch(() => {});  // permission name unknown in this browser: keep the hint
-    }
+  if (NO_HTTP) {
+    // Ethernet-only UI off; links to the boards' own pages instead (a top-level navigation is not
+    // mixed content, so this page keeps its padlock).
+    ['cards', 'noBoards', 'rescan', 'scan', 'scanInfo', 'dash'].forEach(id => $(id).classList.add('hidden'));
+    document.querySelector('[data-tab="clone"]').classList.add('hidden');
+    $('oTransport').querySelector('option[value="http"]').remove();
+    $('oTransport').value = 'serial';
+    $('uart').open = true;
+    const el = $('ethLinks');
+    el.innerHTML = '<div class="muted" style="font-size:12px;margin-bottom:8px">This hosted console talks to boards over <b>USB serial</b> (panel below). ' +
+      'The USB Ethernet features (live dashboard, board cards, slots, clone, HTTP updates) run on the board\'s own page:</div>' +
+      '<div class="row">' + boards.map(b => `<a class="btn${b.slot ? '' : ' primary'}" href="${b.base}/" title="${b.host}">${slotName(b.slot)} · ${b.ip}</a>`).join('') + '</div>';
+    el.classList.remove('hidden');
+  } else {
+    dlog('sys', `scanning ${boards.map(b => b.ip).join(', ')}`);
   }
 
-  dlog('sys', `scanning ${boards.map(b => b.ip).join(', ')}`);
-  scanAll();
+  if (!NO_HTTP) scanAll();
   schedule();
 })();
 </script>
