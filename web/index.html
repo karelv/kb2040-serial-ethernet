@@ -1130,6 +1130,12 @@ details.panel[open]>summary::before{content:'▾'}
       : 'This browser blocks the boards\' plain-HTTP API from an HTTPS page. For USB Ethernet open ' +
         '<a href="http://192.168.7.1/">http://192.168.7.1/</a> (or <code>http://192.168.7N.1/</code>) directly.';
     n.classList.remove('hidden');
+    if (navigator.userAgentData && !isAndroid && navigator.permissions) {
+      navigator.permissions.query({ name: 'local-network-access' }).then((p) => {
+        const sync = () => n.classList.toggle('hidden', p.state === 'granted');
+        sync(); p.onchange = sync;
+      }).catch(() => {});  // permission name unknown in this browser: keep the hint
+    }
   }
 
   dlog('sys', `scanning ${boards.map(b => b.ip).join(', ')}`);
