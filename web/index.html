@@ -878,7 +878,7 @@ details.panel[open]>summary::before{content:'▾'}
       res = await uploadHttp(b, u8, crcHex);
     }
     // Completion = the same chip reports again over a (re)opened WebSocket with a reset uptime.
-    OTA.await = { chipId: before.chipId, oldVersion: before.version, preUptime: before.uptimeMs, serial: !!target.serial, until: now() + 45000 };
+    OTA.await = { chipId: before.chipId, oldVersion: before.version, preUptime: before.uptimeMs, serial: !!target.serial, since: now(), until: now() + 45000 };
     otaProgress(u8.length, u8.length);
     olog('okl', `staged & verified on device: ${res.size} bytes, CRC32 ${res.crc32}, ${res.ms} ms. Board reboots, the OTA bootloader copies the image.`);
     otaUi('wait', 'board is rebooting into the new firmware…');
@@ -889,16 +889,27 @@ details.panel[open]>summary::before{content:'▾'}
     if (!a) return;
     if (m.chipId !== a.chipId || !b.ws) return;  // the first frame on the reconnected WebSocket
     if (m.uptimeMs >= a.preUptime) return;       // still the pre-reboot instance
+    otaDone(m, 'WebSocket reconnected');
+  }
+  // Serial transport: the port is reopened automatically after the reboot (see tryReopen), and
+  // the first telemetry from the reopened port confirms the build.
+  function otaOnSerialTelemetry(m) {
+    const a = OTA.await;
+    if (!a || !a.serial || m.chipId !== a.chipId || !(U.openedAt > a.since)) return;
+    otaDone(m, 'serial port reopened');
+  }
+  function otaDone(m, how) {
+    const a = OTA.await;
     OTA.await = null;
     const changed = m.version !== a.oldVersion;
-    olog('okl', `✔ ${m.hostname} is back (WebSocket reconnected), running build ${m.version}${changed ? '' : ' (same build as before)'}`);
+    olog('okl', `✔ ${m.hostname} is back (${how}), running build ${m.version}${changed ? '' : ' (same build as before)'}`);
     otaUi('ok', `running build ${m.version}`);
     OTA.busy = false; schedule();
   }
   setInterval(() => {
     if (OTA.await && now() > OTA.await.until) {
       olog('err', OTA.await.serial
-        ? 'no board with that chip ID reappeared on USB Ethernet within 45 s. Reconnect Web Serial to check the new build.'
+        ? 'the board did not come back on the serial port within 45 s. Click Connect to check which build it runs; it may still be copying the image.'
         : 'board did not come back within 45 s. Check the USB connection; it may still be copying the image.');
       OTA.await = null; OTA.busy = false; otaUi('err', 'no reconnect'); schedule();
     }
@@ -966,7 +977,7 @@ details.panel[open]>summary::before{content:'▾'}
   // =====================================================================
   // Web Serial (CDC-ACM)
   // =====================================================================
-  const U = { port: null, reader: null, writer: null, closing: false, board: null, waiters: new Set() };
+  const U = { port: null, reader: null, writer: null, closing: false, board: null, waiters: new Set(), rearm: null, openedAt: 0 };
   const uLog = $('uLog');
   const uBtns = () => [...document.querySelectorAll('[data-u]'), $('uBoot'), $('uCmd'), $('uSend')];
 
@@ -1017,6 +1028,7 @@ details.panel[open]>summary::before{content:'▾'}
     if (!m) return;
     if (m.type === 'telemetry') {
       U.board = m;
+      otaOnSerialTelemetry(m);
       $('uChip').textContent = `${m.chipId} · ${slotName(m.slot)} · ${m.ip}`;
       $('uCounter').textContent = m.counter;
       $('uLed').className = 'led' + (m.led ? ' lit' : '');
@@ -1028,16 +1040,45 @@ details.panel[open]>summary::before{content:'▾'}
       const filters = [{ usbVendorId: 0x239a }, { usbVendorId: 0x2e8a }];
       const api = kind === 'usb' ? await loadPolyfill() : navigator.serial;
       const port = await api.requestPort({ filters });
-      await port.open({ baudRate: 115200, bufferSize: 16384 });
-      U.port = port; U.kind = kind; U.closing = false;
-      U.writer = port.writable.getWriter();
-      uiUart(true);
-      logLine(uLog, 'sys', kind === 'usb' ? 'port opened (WebUSB polyfill)' : 'port opened');
-      if (port.addEventListener) port.addEventListener('disconnect', () => { logLine(uLog, 'sys', 'device disconnected'); uartCleanup(); });
-      readLoop(port);
-      uartSend('STATE');
+      await openPort(port, kind, 'port opened');
     } catch (e) {
       if (e.name !== 'NotFoundError') logLine(uLog, 'err', 'connect failed: ' + e.message);
+    }
+  }
+
+  async function openPort(port, kind, msg) {
+    await port.open({ baudRate: 115200, bufferSize: 16384 });
+    U.port = port; U.kind = kind; U.closing = false; U.rearm = null; U.openedAt = now();
+    U.writer = port.writable.getWriter();
+    uiUart(true);
+    logLine(uLog, 'sys', msg + (kind === 'usb' ? ' (WebUSB polyfill)' : ''));
+    if (port.addEventListener) port.addEventListener('disconnect', () => portGone(port), { once: true });
+    readLoop(port);
+    uartSend('STATE');
+  }
+
+  // The board went away without the user clicking Disconnect (reboot after an update, a slot
+  // change, REBOOT, unplug). The port was granted before, so when the board re-enumerates within
+  // a minute it is reopened without a click (Web Serial and WebUSB both allow that).
+  function portGone(port) {
+    if (!port || U.port !== port) return;
+    logLine(uLog, 'sys', 'device disconnected, will reopen it when it comes back');
+    U.rearm = { kind: U.kind, until: now() + 60000 };
+    uartCleanup();
+  }
+
+  async function tryReopen(kind) {
+    for (let i = 0; i < 6; i++) {  // CDC-ACM needs a moment after the USB 'connect' event
+      const r = U.rearm;
+      if (!r || r.kind !== kind || U.port || now() > r.until) return;
+      await new Promise(res => setTimeout(res, 400));
+      let ports = [];
+      try { ports = kind === 'usb' ? await (await loadPolyfill()).getPorts() : await navigator.serial.getPorts(); } catch {}
+      ports = ports.filter(p => [0x239a, 0x2e8a].includes(p.getInfo().usbVendorId));
+      for (const p of ports) {
+        if (U.port || !U.rearm) return;
+        try { await openPort(p, kind, 'port reopened'); return; } catch {}
+      }
     }
   }
 
@@ -1058,7 +1099,7 @@ details.panel[open]>summary::before{content:'▾'}
       } catch (e) {
         if (!U.closing) logLine(uLog, 'err', 'read error: ' + e.message);
         // WebUSB: a failed transfer usually means the device went away; don't spin on a dead port.
-        if (U.kind === 'usb' && !U.closing) { uartCleanup(); }
+        if (U.kind === 'usb' && !U.closing) portGone(U.port);
       } finally {
         try { U.reader.releaseLock(); } catch {}
         U.reader = null;
@@ -1118,7 +1159,7 @@ details.panel[open]>summary::before{content:'▾'}
 
   $('uConnect').onclick = () => uartConnect('serial');
   $('uConnectUsb').onclick = () => uartConnect('usb');
-  $('uDisconnect').onclick = async () => { await uartCleanup(); logLine(uLog, 'sys', 'port closed'); };
+  $('uDisconnect').onclick = async () => { U.rearm = null; await uartCleanup(); logLine(uLog, 'sys', 'port closed'); };
   document.querySelectorAll('[data-u]').forEach(b => b.onclick = () => uartSend(b.dataset.u));
   $('uSend').onclick = () => { const v = $('uCmd').value.trim(); if (v) { uartSend(v); $('uCmd').value = ''; } };
   $('uCmd').addEventListener('keydown', e => { if (e.key === 'Enter') $('uSend').click(); });
@@ -1126,6 +1167,7 @@ details.panel[open]>summary::before{content:'▾'}
     if (!confirm('Reboot the KB2040 into the UF2 bootloader (RPI-RP2 drive)?')) return;
     await uartSend('BOOTSEL');
     logLine(uLog, 'sys', 'bootloader requested. The board will reappear as RPI-RP2');
+    U.rearm = null;
     setTimeout(uartCleanup, 300);
   };
   $('uClear').onclick = () => uLog.textContent = '';
@@ -1134,13 +1176,17 @@ details.panel[open]>summary::before{content:'▾'}
   serialSupportNote();
   uiUart(false);
   if (window.isSecureContext && 'serial' in navigator) {
-    navigator.serial.addEventListener('connect', () => logLine(uLog, 'sys', 'serial device attached. Click Connect'));
+    navigator.serial.addEventListener('connect', () => {
+      if (U.rearm && U.rearm.kind === 'serial') tryReopen('serial');
+      else if (!U.port) logLine(uLog, 'sys', 'serial device attached. Click Connect');
+    });
   }
   if (hasUsb) {
     $('uConnectUsb').classList.remove('hidden');
     navigator.usb.addEventListener('disconnect', (e) => {
-      if (U.kind === 'usb' && U.port && e.device === U.port.device_) { logLine(uLog, 'sys', 'device disconnected'); uartCleanup(); }
+      if (U.kind === 'usb' && U.port && e.device === U.port.device_) portGone(U.port);
     });
+    navigator.usb.addEventListener('connect', () => { if (U.rearm && U.rearm.kind === 'usb') tryReopen('usb'); });
     if (isAndroid) {
       // WebUSB first on Android; the serial panel is the main control path there.
       $('uConnectUsb').classList.add('primary');
