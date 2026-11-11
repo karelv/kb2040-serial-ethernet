@@ -1,10 +1,17 @@
-# Publishes web/ (the console PWA) to GitHub Pages on every push to main that touches it.
+# Builds the firmware and publishes it together with web/ (the console PWA) to GitHub Pages:
+#   https://karelv.github.io/kb2040-serial-ethernet/            console
+#   .../firmware/firmware.bin, firmware.uf2, firmware.json       latest build of main
 name: Pages
 
 on:
   push:
     branches: [main]
-    paths: ["web/**", ".github/workflows/pages.yml"]
+    paths:
+      - "web/**"
+      - "firmware/**"
+      - "compile.sh"
+      - ".arduino/arduino-cli.yaml"
+      - ".github/workflows/pages.yml"
   workflow_dispatch:
 
 permissions:
@@ -16,6 +23,11 @@ concurrency:
   group: pages
   cancel-in-progress: true
 
+env:
+  ARDUINO_CLI_VERSION: "1.5.1"
+  RP2040_CORE: "rp2040:rp2040@6.3.2"
+  NEOPIXEL_LIB: "Adafruit NeoPixel@1.15.5"
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
@@ -24,6 +36,42 @@ jobs:
       url: ${{ steps.deploy.outputs.page_url }}
     steps:
       - uses: actions/checkout@v7
+
+      # ---- firmware: same project-local layout as on the Mac (see README: Toolchain bootstrap)
+      - uses: actions/cache@v6
+        with:
+          path: |
+            .arduino/data
+            .arduino/downloads
+            .arduino/sketchbook
+          key: arduino-${{ env.ARDUINO_CLI_VERSION }}-${{ env.RP2040_CORE }}-${{ env.NEOPIXEL_LIB }}
+      - name: Install toolchain
+        run: |
+          curl -fsSL https://raw.githubusercontent.com/arduino/arduino-cli/master/install.sh \
+            | BINDIR=.arduino/bin sh -s "$ARDUINO_CLI_VERSION"
+          A="./.arduino/bin/arduino-cli --config-file ./.arduino/arduino-cli.yaml"
+          $A core update-index
+          $A core install "$RP2040_CORE"
+          $A lib install "$NEOPIXEL_LIB"
+      - name: Build firmware
+        run: ./compile.sh
+      - name: Add firmware to the site
+        run: |
+          mkdir -p web/firmware
+          cp build/firmware.ino.bin web/firmware/firmware.bin
+          cp build/firmware.ino.uf2 web/firmware/firmware.uf2
+          python3 - <<'PY'
+          import json, os, re, zlib
+          b = open("web/firmware/firmware.bin", "rb").read()
+          # kVersion = __DATE__ " " __TIME__ (UTC on the runner), exactly what the board reports as "version"
+          m = re.search(rb"[A-Z][a-z]{2} [ 0-9]\d \d{4} \d\d:\d\d:\d\d", b)
+          info = {"version": m.group().decode() if m else "", "commit": os.environ["GITHUB_SHA"],
+                  "size": len(b), "crc32": "%08X" % zlib.crc32(b)}
+          json.dump(info, open("web/firmware/firmware.json", "w"), indent=1)
+          print(info)
+          PY
+
+      # ---- site
       # A new cache name per commit makes installed apps pick up the new version.
       - name: Stamp service-worker cache version
         run: |

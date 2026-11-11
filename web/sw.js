@@ -14,9 +14,17 @@ const SHELL = [
   'apple-touch-icon.png',
   'vendor/web-serial-polyfill.js',
 ];
+// Published firmware (CI build): cached for offline flashing, but optional, so the worker still
+// installs where it is missing (python3 serve.py, forks without the CI build).
+const OPTIONAL = ['firmware/firmware.json', 'firmware/firmware.bin'];
 
 self.addEventListener('install', (e) => {
-  e.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL)).then(() => self.skipWaiting()));
+  e.waitUntil((async () => {
+    const c = await caches.open(CACHE);
+    await c.addAll(SHELL);
+    await Promise.allSettled(OPTIONAL.map((u) => c.add(new Request(u, { cache: 'no-store' }))));
+    await self.skipWaiting();
+  })());
 });
 
 self.addEventListener('activate', (e) => {

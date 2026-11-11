@@ -223,7 +223,8 @@ details.panel[open]>summary::before{content:'▾'}
           <input type="url" id="oUrl" spellcheck="false" aria-label="Firmware URL">
           <button id="oUrlGo" class="primary">Stream &amp; Flash directly from URL</button>
         </div>
-        <div class="muted" style="font-size:12px;margin-top:6px">The browser fetches the <code>.bin</code> into RAM and streams it to the board. Nothing is saved to disk. Serve the build with <code class="mono">python3 serve.py</code> (adds CORS headers).</div>
+        <div class="muted" style="font-size:12px;margin-top:6px">The browser fetches the <code>.bin</code> into RAM and streams it to the board. Nothing is saved to disk. Default: the build published with this console (CI, branch <code>main</code>). For a local build run <code class="mono">python3 serve.py</code> and use <code class="mono">http://localhost:8000/build/firmware.ino.bin</code>.</div>
+        <div class="muted" id="oLatest" style="font-size:12px;margin-top:4px"></div>
       </div>
 
       <div data-pane="clone" class="hidden">
@@ -316,6 +317,7 @@ details.panel[open]>summary::before{content:'▾'}
   const fmtMs = (ms) => ms >= 1000 ? (ms / 1000).toFixed(ms % 1000 ? 2 : 0) + ' s' : ms + ' ms';
   const fmtUp = (ms) => { const s = Math.floor(ms / 1000); return `${Math.floor(s/3600)}h ${String(Math.floor(s/60)%60).padStart(2,'0')}m ${String(s%60).padStart(2,'0')}s`; };
   const slotName = (s) => s ? 'Slot ' + s : 'Default';
+  const PAGES_URL = 'https://karelv.github.io/kb2040-serial-ethernet/';  // hosted console + CI firmware
 
   // ---------------- CRC32 (IEEE) ----------------
   const CRC_T = (() => { const t = new Uint32Array(256); for (let n = 0; n < 256; n++) { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1; t[n] = c >>> 0; } return t; })();
@@ -698,9 +700,41 @@ details.panel[open]>summary::before{content:'▾'}
   // Firmware update (3 sources × 2 transports)
   // =====================================================================
   const OTA = { busy: false, t0: 0, await: null, tab: 'url' };
-  const defaultUrl = (location.port === '8000' && location.hostname === 'localhost')
-    ? location.origin + '/build/firmware.ino.bin' : 'http://localhost:8000/build/firmware.ino.bin';
+  // Published firmware: built by CI from main and deployed with the hosted console (the service
+  // worker caches it, so the installed app can flash it offline). Next to this page when it is the
+  // hosted copy (or any HTTPS copy of it), else on GitHub Pages.
+  const PUBLISHED_BASE = location.protocol === 'https:' ? new URL('firmware/', document.baseURI).href : PAGES_URL + 'firmware/';
+  const PUBLISHED_BIN = PUBLISHED_BASE + 'firmware.bin';
+  const isServePy = location.port === '8000' && location.hostname === 'localhost';
+  const defaultUrl = isServePy ? location.origin + '/build/firmware.ino.bin' : PUBLISHED_BIN;
   $('oUrl').value = store.get('otaUrl', defaultUrl);
+  let published = null, publishedChecked = false;  // firmware.json of the published build
+  async function loadPublished() {
+    try {
+      const r = await fetch(PUBLISHED_BASE + 'firmware.json', { cache: 'no-store' });
+      if (r.ok) published = await r.json();
+    } catch {}
+    publishedChecked = true;
+    renderPublished();
+  }
+  function renderPublished() {
+    const el = $('oLatest');
+    if (!published) {
+      el.textContent = publishedChecked ? 'Published build: not reachable (offline, and not cached by the installed app yet).' : 'Published build: checking…';
+      return;
+    }
+    const t = otaTargetFor();
+    const cur = t && (t.serial ? U.board : t.board.tel);
+    const same = cur && cur.version === published.version;
+    const html = `Published build: <span class="mono">${published.version}</span> · ` +
+      `<a href="https://github.com/karelv/kb2040-serial-ethernet/commit/${published.commit}" target="_blank" rel="noopener">${published.commit.slice(0, 7)}</a> · ` +
+      `${(published.size / 1024).toFixed(0)} KB` + (cur ? (same ? ' · <b>target already runs it</b>' : ` · target runs <span class="mono">${cur.version}</span>`) : '') +
+      ($('oUrl').value.trim() === PUBLISHED_BIN ? '' : ' · <button id="oUsePublished" class="small">Use it</button>');
+    if (el.dataset.html === html) return;  // called from render(): only touch the DOM on change
+    el.innerHTML = el.dataset.html = html;
+    const b = $('oUsePublished');
+    if (b) b.onclick = () => { $('oUrl').value = PUBLISHED_BIN; store.set('otaUrl', PUBLISHED_BIN); renderPublished(); };
+  }
 
   document.querySelectorAll('[data-tab]').forEach(btn => btn.onclick = () => {
     OTA.tab = btn.dataset.tab;
@@ -742,8 +776,11 @@ details.panel[open]>summary::before{content:'▾'}
     $('oCloneGo').disabled = !can || list.length < 2 || !$('oDst').value;
     $('oCloneHint').classList.toggle('warn', list.length < 2);
     $('oFile').disabled = !can;
+    renderPublished();
   }
   $('oTransport').onchange = schedule;
+  $('oUrl').addEventListener('input', () => renderPublished());
+  loadPublished();
 
   function otaUi(state, text) {
     const map = { idle: ['off', 'Idle'], busy: ['info', 'Working…'], ok: ['on', 'Done'], err: ['err', 'Failed'], wait: ['wait', 'Rebooting…'] };
@@ -928,7 +965,6 @@ details.panel[open]>summary::before{content:'▾'}
   // (Google's web-serial-polyfill) is the way in. On desktops the OS serial driver owns the
   // interface, so WebUSB cannot claim it: native Web Serial stays the default there.
   const isAndroid = /Android/i.test(navigator.userAgent);
-  const PAGES_URL = 'https://karelv.github.io/kb2040-serial-ethernet/';
   const hasUsb = window.isSecureContext && 'usb' in navigator;
   // Vendored copy next to the page (cached by the service worker, so it works offline); the CDN
   // is the fallback for pages that have no vendor/ folder next to them (file://, board-served page).

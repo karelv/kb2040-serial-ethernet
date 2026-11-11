@@ -11,10 +11,12 @@ Up to five boards can be connected at once. Each board sits on its own subnet, s
 
 **Hosted console (installable, works offline):** <https://karelv.github.io/kb2040-serial-ethernet/>
 
+**Latest firmware (CI build of `main`):** [`firmware.bin`](https://karelv.github.io/kb2040-serial-ethernet/firmware/firmware.bin) · [`firmware.uf2`](https://karelv.github.io/kb2040-serial-ethernet/firmware/firmware.uf2) (for the `RPI-RP2` drive) · [`firmware.json`](https://karelv.github.io/kb2040-serial-ethernet/firmware/firmware.json) (version, commit, size, CRC32)
+
 ## Layout
 
 ```
-.arduino/              project-local arduino-cli, cores, libraries (self-contained)
+.arduino/              project-local arduino-cli, cores, libraries (only arduino-cli.yaml is in git)
 firmware/
   firmware.ino         app: identity, slots, LED, WebSocket + HTTP server, OTA engine, Serial
   app_types.h          structs (kept in a header for Arduino's prototype generator)
@@ -29,7 +31,7 @@ web/                   the console, published to GitHub Pages as a PWA
   sw.js                service worker (offline cache; Pages only, needs HTTPS or localhost)
   vendor/              web-serial-polyfill 1.0.15 (Apache-2.0), so WebUSB serial works offline
 tools/make-icons.py    renders the icons
-.github/workflows/pages.yml   deploys web/ to GitHub Pages on push to main
+.github/workflows/pages.yml   builds the firmware and deploys it + web/ to GitHub Pages on push to main
 build/                 firmware.ino.bin / .uf2 / .elf / .map after ./compile.sh
 compile.sh flash.sh serve.py android-diag.sh
 ```
@@ -72,7 +74,7 @@ Three ways, all the same `web/index.html`:
 
 - **Desktop Chrome/Edge, Android Chrome:** open the Pages URL once while online, then use the **Install app** button in the header (or the browser's install icon/menu). After that it starts offline; when online it fetches the latest version.
 - **iPhone/iPad:** iOS has no Web Serial/WebUSB and Safari blocks the board's HTTP API from the HTTPS page, so install from the **board's own page** instead: open `http://192.168.7.1/` in Safari → Share → *Add to Home Screen*. It's served by the board, so it needs no internet.
-- Pages is redeployed by `.github/workflows/pages.yml` on every push to `main` that changes `web/`. Each deploy stamps a new cache version into `sw.js`, so installed apps update on their next online start.
+- Pages is redeployed by `.github/workflows/pages.yml` on every push to `main` that changes `web/`, `firmware/` or `compile.sh`. The workflow builds the firmware with the same pinned toolchain (arduino-cli 1.5.1, rp2040 core 6.3.2, NeoPixel 1.15.5) and publishes it under `firmware/`. Each deploy stamps a new cache version into `sw.js`, so installed apps update (page **and** firmware) on their next online start.
 
 ### Local server
 
@@ -156,7 +158,7 @@ The NeoPixel shows a blue progress animation while this runs. After the reboot, 
 
 In the console's **Firmware update** panel, pick the transport (*USB Ethernet* targets the active board, *Web Serial* targets the board on the open serial port), then one of:
 
-1. **Stream from URL:** defaults to `http://localhost:8000/build/firmware.ino.bin` (what `serve.py` serves after `./compile.sh`). The browser `fetch()`es the image into RAM and streams it to the board. Nothing is saved to disk.
+1. **Stream from URL:** defaults to the **published CI build** (`firmware/firmware.bin` next to the hosted console; the installed app caches it, so this works offline too). The panel shows its version and commit and whether the target already runs it. On `python3 serve.py` it defaults to the local build `http://localhost:8000/build/firmware.ino.bin`. The browser `fetch()`es the image into RAM and streams it to the board. Nothing is saved to disk.
 2. **Clone board→board:** with 2+ boards online, *Clone Firmware from Active Board to Target Board* reads the running image from the source board's XIP flash (`GET /api/firmware.bin`, which is byte-identical to `build/firmware.ino.bin` and carries an `X-CRC32` header that the browser checks) and streams it into the target.
 3. **Local .bin file:** drag-and-drop or a file picker, with a progress bar, percentage, KB/s and elapsed time.
 
@@ -186,7 +188,7 @@ The board-to-host link has two paths: USB Ethernet (the board's network) and USB
 - Test in airplane mode first; with Wi-Fi or mobile data on, Android may route the browser over that network instead. Use the IP rather than `kb2040.local`.
 - `./android-diag.sh` collects phone-side logs (interfaces, addresses, ping/HTTP to the board, logcat) without Wi-Fi: start it with the phone on the Mac, move the cable to the board, reproduce, move it back, `./android-diag.sh pull`.
 - **With Wi-Fi or mobile data on, use the serial path** (Android sends the browser's traffic over the network that has internet, so the board's network is unreachable then). Open the installed app or <https://karelv.github.io/kb2040-serial-ethernet/>; WebUSB is blocked on plain-HTTP pages such as the board's own page. Tap **Connect via WebUSB** and pick the KB2040. The polyfill is bundled, so this also works offline.
-- That gives you the live counter, LED, identify, interval and slot commands (`SLOT:2`, `INTERVAL:250`, ...), the raw console, and firmware updates via **Local .bin file** with transport **Web Serial**, which Android selects automatically.
+- That gives you the live counter, LED, identify, interval and slot commands (`SLOT:2`, `INTERVAL:250`, ...), the raw console, and firmware updates with transport **Web Serial** (Android selects it automatically): **Stream from URL** flashes the published build, also offline from the installed app, or use **Local .bin file**.
 - The board cards, dashboard, *Stream from URL* and *Clone* need the board network, so on the phone they work only with Wi-Fi and mobile data off.
 
 ### iPhone and iPad

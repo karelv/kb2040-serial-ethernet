@@ -1,4 +1,5 @@
-.arduino/
+.arduino/*
+!.arduino/arduino-cli.yaml
 build/
 firmware/webui.h.tmp
 firmware/build_info.h
