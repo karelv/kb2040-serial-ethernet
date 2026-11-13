@@ -21,6 +21,7 @@ firmware/
   firmware.ino         app: identity, slots, LED, WebSocket + HTTP server, OTA engine, Serial
   app_types.h          structs (kept in a header for Arduino's prototype generator)
   dhcp_server.*        minimal DHCP server (leases .2-.9, no router/DNS option)
+  flight_log.*         flight recorder: USB/network events of the last 8 boots, kept in LittleFS
   mdns_responder.*     minimal mDNS responder (two names per board, NSEC for AAAA)
   webui.h              GENERATED from web/index.html by compile.sh
   webassets.h          GENERATED from web/ manifest + icons by compile.sh
@@ -31,6 +32,7 @@ web/                   the console, published to GitHub Pages as a PWA
   sw.js                service worker (offline cache; Pages only, needs HTTPS or localhost)
   vendor/              web-serial-polyfill 1.0.15 (Apache-2.0), so WebUSB serial works offline
 tools/make-icons.py    renders the icons
+docs/                  research notes: melexis-io-arduino.md (STM32F446 port), iphone-ethernet.md
 .github/workflows/pages.yml   builds the firmware and deploys it + web/ to GitHub Pages on push to main
 build/                 firmware.ino.bin / .uf2 / .elf / .map after ./compile.sh
 compile.sh flash.sh serve.py android-diag.sh
@@ -202,6 +204,20 @@ All iOS browsers use Safari's engine, which has neither Web Serial nor WebUSB, s
 - **Quick test:** plug a board into the iPhone, look for an **Ethernet** entry in *Settings*, then open `http://192.168.7.1/` in Safari.
 - A USB-C iPhone powers the board directly. A Lightning iPhone needs Apple's Lightning to USB Camera Adapter.
 - If iOS rejects NCM, the fallback would be ECM, another USB-Ethernet class. The core's USB library doesn't include ECM, so that means changing the board's USB stack.
+- Details and test log: [docs/iphone-ethernet.md](docs/iphone-ethernet.md).
+- **First test (Nov 2026):** no page. The NeoPixel pulsed amber, so the iPhone powered the board and selected its USB configuration, but no HTTP request arrived. The flight recorder (below) is there to find out which step fails.
+
+### Flight recorder
+
+Each boot gets a record in LittleFS: USB mounts and suspends, which endpoints the host opened, the Ethernet frames received (by type), DHCP messages with the client's host name and vendor class, and the first HTTP request with its User-Agent. The last 8 boots are kept. Saving happens within a second of each milestone, every 10 s for the first 10 minutes, and every 5 minutes after that.
+
+To diagnose a host without a serial console (iPhone, Android): plug the board into that host, try it, then plug the board into a computer and read the log:
+
+- serial: send `FLIGHT` (or `{"cmd":"flight"}`), for example from the console's serial terminal;
+- HTTP: `http://192.168.7.1/api/flight`;
+- `FLIGHT:CLEAR` (or `{"cmd":"flightclear"}`) empties it.
+
+How to read it: `usb.mounts` > 0 means the host selected the configuration. If the host's network driver started, `usb.epMax` lists 4 IN and 2 OUT endpoints: the NCM data endpoints are only opened when the host selects the data interface. `rx.frames` = 0 means the host never sent a frame. Then come `dhcp` (discover → offer → request → ack) and finally `http`.
 
 ## Notes and limits
 

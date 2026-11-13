@@ -28,7 +28,7 @@ struct CmdResult {
 };
 
 struct HttpReq {
-  String method, path, query, wsKey, crc;
+  String method, path, query, wsKey, crc, userAgent;
   bool upgrade = false, expectContinue = false;
   long contentLength = -1;
 };

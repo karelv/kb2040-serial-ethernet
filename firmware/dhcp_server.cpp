@@ -18,8 +18,8 @@ constexpr uint32_t kLeaseSeconds = 24 * 3600;
 
 enum : uint8_t { DISCOVER = 1, OFFER = 2, REQUEST = 3, DECLINE = 4, ACK = 5, NAK = 6, RELEASE = 7, INFORM = 8 };
 enum : uint8_t {
-  OPT_PAD = 0, OPT_SUBNET = 1, OPT_REQ_IP = 50, OPT_LEASE = 51, OPT_MSG_TYPE = 53,
-  OPT_SERVER_ID = 54, OPT_T1 = 58, OPT_T2 = 59, OPT_END = 255
+  OPT_PAD = 0, OPT_SUBNET = 1, OPT_HOST_NAME = 12, OPT_REQ_IP = 50, OPT_LEASE = 51, OPT_MSG_TYPE = 53,
+  OPT_SERVER_ID = 54, OPT_T1 = 58, OPT_T2 = 59, OPT_VENDOR_CLASS = 60, OPT_END = 255
 };
 
 struct __attribute__((packed)) DhcpMsg {
@@ -48,6 +48,7 @@ struct netif *g_netif = nullptr;
 uint8_t g_serverIp[4];
 uint8_t g_netmask[4];
 DhcpMsg g_rx, g_tx;  // static: callback runs in lwIP context, keep it off the stack
+DhcpObserver g_observer = nullptr;
 
 const uint8_t *findOpt(const uint8_t *opt, size_t len, uint8_t code) {
   size_t i = 0;
@@ -134,6 +135,17 @@ void sendReply(uint8_t type, int leaseIdx) {
   // Client has no IP yet: always broadcast on the (bound) USB interface.
   udp_sendto(g_pcb, pb, IP_ADDR_BROADCAST, kClientPort);
   pbuf_free(pb);
+  if (g_observer) g_observer(type, false, g_tx.chaddr, nullptr, nullptr, g_tx.yiaddr[3]);
+}
+
+// Copies a string option (not NUL-terminated on the wire) into out; "" when absent.
+void optString(size_t optLen, uint8_t code, char *out, size_t outLen) {
+  out[0] = '\0';
+  const uint8_t *o = findOpt(g_rx.options, optLen, code);
+  if (!o) return;
+  size_t n = o[1] < outLen - 1 ? o[1] : outLen - 1;
+  memcpy(out, o + 2, n);
+  out[n] = '\0';
 }
 
 void onDhcpPacket(void *, struct udp_pcb *, struct pbuf *p, const ip_addr_t *, u16_t) {
@@ -147,6 +159,12 @@ void onDhcpPacket(void *, struct udp_pcb *, struct pbuf *p, const ip_addr_t *, u
   const uint8_t *t = findOpt(g_rx.options, optLen, OPT_MSG_TYPE);
   if (!t || t[1] < 1) return;
   uint8_t type = t[2];
+  if (g_observer) {
+    char host[33], vendor[49];
+    optString(optLen, OPT_HOST_NAME, host, sizeof(host));
+    optString(optLen, OPT_VENDOR_CLASS, vendor, sizeof(vendor));
+    g_observer(type, true, g_rx.chaddr, host, vendor, 0);
+  }
 
   switch (type) {
     case DISCOVER: {
@@ -211,3 +229,5 @@ bool dhcpServerBegin(struct netif *nif, const ip4_addr_t *serverIp, const ip4_ad
   udp_recv(g_pcb, onDhcpPacket, nullptr);
   return true;
 }
+
+void dhcpServerSetObserver(DhcpObserver fn) { g_observer = fn; }
